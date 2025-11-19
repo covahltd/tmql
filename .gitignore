@@ -1,0 +1,19 @@
+# dependencies
+node_modules
+
+# misc
+.DS_Store
+.vscode
+.eslintcache
+
+# claude local settings
+.claude/settings.local.json
+
+# build output
+dist
+
+# benchmark results and generated files
+benchmarks/
+
+# local env files
+.env*

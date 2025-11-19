@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    // Base
+    "skipLibCheck": true,
+    "allowJs": true,
+    "checkJs": true,
+    "resolveJsonModule": true,
+    // Type definitions
+    "types": ["bun-types"],
+    // ESM Compatibility
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "target": "ES2022",
+    // Strictness
+    "strict": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUncheckedIndexedAccess": true,
+    "noUncheckedSideEffectImports": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "useDefineForClassFields": true,
+    // Display full types in IDE hovers without truncation
+    "noErrorTruncation": true
+  }
+}

@@ -1,0 +1,12 @@
+# Cursor Rules for TMQL
+
+## TypeScript Type Checking
+
+**ALWAYS use the project tsconfig.json when checking TypeScript files.**
+
+- ✅ **Correct**: `npx tsc --noEmit --project .` or `bun run build`
+- ❌ **Incorrect**: `npx tsc --noEmit src/path/to/file.ts` (ignores tsconfig.json)
+
+When checking individual TypeScript files for type errors, always use `--project .` to ensure the project's tsconfig.json (which extends tsconfig.options.json) is applied. Checking files individually without `--project .` uses default compiler options and may show false errors or miss project-specific settings.
+
+The build command (`bun run build`) correctly uses the project tsconfig, so type assertions that pass in the build may appear to fail when checking individual files without the project flag.

@@ -5,6 +5,7 @@
 ## Purpose
 
 tmql provides compile-time type safety for MongoDB aggregation pipelines, ensuring that:
+
 - Field references are validated against your document schemas
 - Pipeline stage outputs are correctly inferred through each transformation
 - Type errors are caught at development time, not runtime

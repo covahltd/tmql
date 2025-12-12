@@ -1,5 +1,11 @@
 # tmql
 
+## 0.3.1
+
+### Patch Changes
+
+- 35d7450: Add passthrough methods for common MongoDB database operations
+
 ## 0.3.0
 
 ### Minor Changes

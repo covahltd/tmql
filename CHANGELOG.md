@@ -1,5 +1,11 @@
 # tmql
 
+## 0.4.0
+
+### Minor Changes
+
+- 539e81e: Adds type definitions and inference for MongoDB date manipulation expression operators
+
 ## 0.3.1
 
 ### Patch Changes

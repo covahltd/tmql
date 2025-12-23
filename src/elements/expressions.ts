@@ -1,6 +1,6 @@
 import { Document } from "../utils/core";
 import {
-  FieldReference,
+  FieldReference, // Used in InferArrayExpression
   InferFieldReference,
   FieldReferencesThatInferTo,
 } from "./fieldReference";
@@ -57,6 +57,92 @@ export type DateToStringExpression<Schema extends Document> = {
       | Date; // Date literal
     timezone?: string;
     onNull?: unknown;
+  };
+};
+
+/**
+ * Time unit for date truncation/manipulation
+ */
+export type DateUnit =
+  | "year"
+  | "quarter"
+  | "week"
+  | "month"
+  | "day"
+  | "hour"
+  | "minute"
+  | "second"
+  | "millisecond";
+
+/**
+ * $dateTrunc expression - truncates a date to a specified unit
+ * Syntax: { $dateTrunc: { date: "$timestamp", unit: "day" } }
+ * Accepts:
+ * - date: Field reference to a Date field or Date literal
+ * - unit: time unit to truncate to
+ * - binSize: optional number of units
+ * - timezone: optional timezone string
+ * - startOfWeek: optional day to start week (for "week" unit)
+ * Returns: Date
+ */
+export type DateTruncExpression<Schema extends Document> = {
+  $dateTrunc: {
+    date:
+      | FieldReferencesThatInferTo<Schema, Date> // Field reference that resolves to Date
+      | Date; // Date literal
+    unit: DateUnit;
+    binSize?: number;
+    timezone?: string;
+    startOfWeek?:
+      | "monday"
+      | "tuesday"
+      | "wednesday"
+      | "thursday"
+      | "friday"
+      | "saturday"
+      | "sunday";
+  };
+};
+
+/**
+ * $dateAdd expression - adds a specified amount to a date
+ * Syntax: { $dateAdd: { startDate: "$timestamp", unit: "day", amount: 1 } }
+ * Accepts:
+ * - startDate: Field reference to a Date field or Date literal
+ * - unit: time unit to add
+ * - amount: number of units to add (can be field reference)
+ * - timezone: optional timezone string
+ * Returns: Date
+ */
+export type DateAddExpression<Schema extends Document> = {
+  $dateAdd: {
+    startDate:
+      | FieldReferencesThatInferTo<Schema, Date> // Field reference that resolves to Date
+      | Date; // Date literal
+    unit: DateUnit;
+    amount: number | FieldReferencesThatInferTo<Schema, number>;
+    timezone?: string;
+  };
+};
+
+/**
+ * $dateSubtract expression - subtracts a specified amount from a date
+ * Syntax: { $dateSubtract: { startDate: "$timestamp", unit: "day", amount: 1 } }
+ * Accepts:
+ * - startDate: Field reference to a Date field or Date literal
+ * - unit: time unit to subtract
+ * - amount: number of units to subtract (can be field reference)
+ * - timezone: optional timezone string
+ * Returns: Date
+ */
+export type DateSubtractExpression<Schema extends Document> = {
+  $dateSubtract: {
+    startDate:
+      | FieldReferencesThatInferTo<Schema, Date> // Field reference that resolves to Date
+      | Date; // Date literal
+    unit: DateUnit;
+    amount: number | FieldReferencesThatInferTo<Schema, number>;
+    timezone?: string;
   };
 };
 
@@ -132,7 +218,10 @@ export type ModExpression<Schema extends Document> = {
  * Extend this as we add more date operators
  */
 export type DateExpression<Schema extends Document> =
-  DateToStringExpression<Schema>;
+  | DateToStringExpression<Schema>
+  | DateTruncExpression<Schema>
+  | DateAddExpression<Schema>
+  | DateSubtractExpression<Schema>;
 
 /**
  * String expression operands - strings and field references to strings only
@@ -221,10 +310,15 @@ export type InferArrayExpression<Schema extends Document, Expr> =
 
 /**
  * Infer the result type of a date expression
- * For $dateToString: always returns string
+ * - $dateToString: returns string
+ * - $dateTrunc, $dateAdd, $dateSubtract: return Date
  */
 export type InferDateExpression<_Schema extends Document, Expr> =
-  Expr extends { $dateToString: unknown } ? string : never;
+  Expr extends { $dateToString: unknown } ? string
+  : Expr extends { $dateTrunc: unknown } ? Date
+  : Expr extends { $dateAdd: unknown } ? Date
+  : Expr extends { $dateSubtract: unknown } ? Date
+  : never;
 
 /**
  * Infer the result type of a string expression
@@ -253,8 +347,16 @@ export type InferArithmeticExpression<_Schema extends Document, Expr> =
  * Delegates to specific expression type inferrers
  */
 export type InferExpression<Schema extends Document, Expr> =
-  Expr extends { $dateToString: unknown } ? InferDateExpression<Schema, Expr>
-  : Expr extends (
+  // Date expressions
+  Expr extends (
+    | { $dateToString: unknown }
+    | { $dateTrunc: unknown }
+    | { $dateAdd: unknown }
+    | { $dateSubtract: unknown }
+  ) ?
+    InferDateExpression<Schema, Expr>
+  : // Arithmetic expressions
+  Expr extends (
     | { $add: unknown }
     | { $subtract: unknown }
     | { $multiply: unknown }
@@ -262,7 +364,9 @@ export type InferExpression<Schema extends Document, Expr> =
     | { $mod: unknown }
   ) ?
     InferArithmeticExpression<Schema, Expr>
-  : Expr extends { $concatArrays: unknown } | { $size: unknown } ?
+  : // Array expressions
+  Expr extends { $concatArrays: unknown } | { $size: unknown } ?
     InferArrayExpression<Schema, Expr>
-  : Expr extends { $concat: unknown } ? InferStringExpression<Schema, Expr>
+  : // String expressions
+  Expr extends { $concat: unknown } ? InferStringExpression<Schema, Expr>
   : never;

@@ -23,7 +23,7 @@ interface Customer {
 async function testHashJoin() {
   console.log("🚀 Starting Hash Join Detection Test...\n");
 
-  // Start MongoDB instance
+  // Start MongoDB instance (uses default version from mongodb-memory-server)
   const mongod = await MongoMemoryServer.create({
     instance: {
       dbName: "test",
@@ -31,8 +31,17 @@ async function testHashJoin() {
   });
 
   const uri = mongod.getUri();
+  const version = await mongod.getVersion();
   console.log(`MongoDB started at: ${uri}`);
-  console.log(`MongoDB version: ${await mongod.getVersion()}\n`);
+  console.log(`MongoDB version: ${version}`);
+
+  // Verify version is 8.0+
+  const majorVersion = parseInt(version.split(".")[0], 10);
+  if (majorVersion < 8) {
+    console.warn(`⚠️  Warning: MongoDB ${version} may not support all hash join features. Recommended: 8.0+`);
+  } else {
+    console.log(`✅ MongoDB ${version} supports hash joins and SBE $lookup\n`);
+  }
 
   const client = new MongoClient(uri);
   await client.connect();
@@ -213,17 +222,20 @@ async function testHashJoin() {
     console.log("SUMMARY");
     console.log("=".repeat(60));
     console.log(`
-MongoDB Memory Server version: ${await mongod.getVersion()}
+MongoDB version: ${version}
 
-Hash Join Requirements:
-  - MongoDB 6.0+
-  - allowDiskUse: true
-  - Foreign collection small enough (< 10k docs by default)
-  - No suitable index on foreign field (otherwise INLJ preferred)
+Hash Join Requirements (MongoDB 6.0+):
+  ✓ allowDiskUse: true (required for hash join eligibility)
+  ✓ Foreign collection small enough:
+    - < 10,000 documents (internalQueryCollectionMaxNoOfDocumentsToChooseHashJoin)
+    - < 100MB data size (internalQueryCollectionMaxDataSizeBytesToChooseHashJoin)
+  ✓ No suitable index on foreign field (otherwise INLJ is preferred)
+  ✓ SBE engine enabled (default in MongoDB 8.0+)
 
-Note: mongodb-memory-server may use an older MongoDB version
-that doesn't support hash joins or SBE $lookup. Check the
-version output above.
+Hash Join vs INLJ Decision:
+  - If index exists on foreignField → INLJ (Index Nested Loop Join)
+  - If no index + small collection + allowDiskUse → HashJoin
+  - Otherwise → NestedLoopJoin (slowest)
 `);
   } finally {
     await client.close();
@@ -284,9 +296,41 @@ function analyzeExplain(explain: any, testName: string) {
     }
   }
 
-  // Optionally dump full explain for debugging
-  // console.log("\nFull explain output:");
-  // console.log(explainStr);
+  // Dump key parts of explain for debugging
+  console.log(`\n  --- Explain Debug Info ---`);
+
+  // Find and print the lookup-related stages
+  function findLookupInfo(obj: any, path: string = ""): void {
+    if (!obj || typeof obj !== "object") return;
+
+    // Check for strategy field
+    if (obj.strategy) {
+      console.log(`  [${path}] strategy: ${obj.strategy}`);
+    }
+
+    // Check for stage field
+    if (obj.stage && typeof obj.stage === "string") {
+      const stage = obj.stage;
+      if (stage.includes("LOOKUP") || stage.includes("JOIN") || stage.includes("EQ_LOOKUP")) {
+        console.log(`  [${path}] stage: ${stage}`);
+      }
+    }
+
+    // Check for queryPlanner.winningPlan
+    if (obj.queryPlanner?.winningPlan) {
+      console.log(`  [${path}] winningPlan.stage: ${obj.queryPlanner.winningPlan.stage}`);
+    }
+
+    // Recurse
+    for (const key of Object.keys(obj)) {
+      if (typeof obj[key] === "object" && obj[key] !== null) {
+        findLookupInfo(obj[key], path ? `${path}.${key}` : key);
+      }
+    }
+  }
+
+  findLookupInfo(explain);
+  console.log(`  ----------------------------`);
 }
 
 // Run the test

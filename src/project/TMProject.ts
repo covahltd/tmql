@@ -113,8 +113,22 @@ export class TMProject {
     this.defaultDatabase =
       config.defaultDatabase !== undefined ? config.defaultDatabase : undefined;
 
-    // Build models map
-    this.models = new Map(config.models.map((m) => [m.name, m]));
+    // Build models map, auto-discovering upstream dependencies
+    this.models = new Map();
+    const addModelWithDeps = (model: TMModel<any, any, any, any>) => {
+      if (this.models.has(model.name)) return;
+      // First add upstream dependencies
+      const upstream = model.getUpstreamModel();
+      if (upstream) {
+        addModelWithDeps(upstream);
+      }
+      // Then add this model
+      this.models.set(model.name, model);
+    };
+
+    for (const model of config.models) {
+      addModelWithDeps(model);
+    }
 
     // Validate immediately - fail fast
     const validation = this.validate();

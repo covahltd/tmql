@@ -10,6 +10,94 @@ const sourceCollection = new TMCollection<Doc>({
 });
 
 describe("TMProject", () => {
+  describe("auto-discovery", () => {
+    it("should automatically include upstream dependencies", () => {
+      const model1 = new TMModel({
+        name: "model1",
+        from: sourceCollection,
+        pipeline: (p) => p,
+        materialize: { type: "collection", mode: TMModel.Mode.Replace },
+      });
+
+      const model2 = new TMModel({
+        name: "model2",
+        from: model1,
+        pipeline: (p) => p,
+        materialize: { type: "collection", mode: TMModel.Mode.Replace },
+      });
+
+      // Only specify model2 - model1 should be auto-discovered as dependency
+      const project = new TMProject({
+        name: "test",
+        models: [model2],
+      });
+
+      // model1 should be automatically included
+      expect(project.getModel("model1")).toBe(model1);
+      expect(project.getModel("model2")).toBe(model2);
+      expect(project.getModels()).toHaveLength(2);
+    });
+
+    it("should handle deep dependency chains", () => {
+      const model1 = new TMModel({
+        name: "model1",
+        from: sourceCollection,
+        pipeline: (p) => p,
+        materialize: { type: "collection", mode: TMModel.Mode.Replace },
+      });
+
+      const model2 = new TMModel({
+        name: "model2",
+        from: model1,
+        pipeline: (p) => p,
+        materialize: { type: "collection", mode: TMModel.Mode.Replace },
+      });
+
+      const model3 = new TMModel({
+        name: "model3",
+        from: model2,
+        pipeline: (p) => p,
+        materialize: { type: "collection", mode: TMModel.Mode.Replace },
+      });
+
+      // Only specify model3 - model1 and model2 should be auto-discovered
+      const project = new TMProject({
+        name: "test",
+        models: [model3],
+      });
+
+      expect(project.getModels()).toHaveLength(3);
+      expect(project.getModel("model1")).toBe(model1);
+      expect(project.getModel("model2")).toBe(model2);
+      expect(project.getModel("model3")).toBe(model3);
+    });
+
+    it("should deduplicate when model is specified multiple times via dependencies", () => {
+      const model1 = new TMModel({
+        name: "model1",
+        from: sourceCollection,
+        pipeline: (p) => p,
+        materialize: { type: "collection", mode: TMModel.Mode.Replace },
+      });
+
+      const model2 = new TMModel({
+        name: "model2",
+        from: model1,
+        pipeline: (p) => p,
+        materialize: { type: "collection", mode: TMModel.Mode.Replace },
+      });
+
+      // Explicitly include model1 even though it's a dependency of model2
+      const project = new TMProject({
+        name: "test",
+        models: [model1, model2],
+      });
+
+      // Should not have duplicates
+      expect(project.getModels()).toHaveLength(2);
+    });
+  });
+
   describe("plan()", () => {
     it("should create valid execution plan", () => {
       const model1 = new TMModel({
@@ -141,32 +229,6 @@ describe("TMProject", () => {
         const result = project.validate();
         expect(result.valid).toBe(true);
         expect(result.errors).toHaveLength(0);
-      });
-    });
-
-    describe("missing dependencies", () => {
-      it("should throw on construction when upstream model is missing", () => {
-        const orphanUpstream = new TMModel({
-          name: "orphan_upstream",
-          from: sourceCollection,
-          pipeline: (p) => p,
-          materialize: { type: "collection", mode: TMModel.Mode.Replace },
-        });
-
-        const model = new TMModel({
-          name: "model",
-          from: orphanUpstream, // depends on model not in project
-          pipeline: (p) => p,
-          materialize: { type: "collection", mode: TMModel.Mode.Replace },
-        });
-
-        // Should throw because orphanUpstream is not in the project
-        expect(() => {
-          new TMProject({
-            name: "test",
-            models: [model], // Only add `model`, not `orphanUpstream`
-          });
-        }).toThrow(/orphan_upstream/);
       });
     });
 

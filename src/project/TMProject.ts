@@ -115,23 +115,23 @@ export class TMProject {
 
     // Build models map, auto-discovering all ancestors (including lookup and unionWith)
     this.models = new Map();
-    const addModelWithDeps = (model: TMModel<any, any, any, any>) => {
+    const addModelWithAncestors = (model: TMModel<any, any, any, any>) => {
       if (this.models.has(model.name)) return;
       // First add upstream ancestor (from property)
       const upstream = model.getUpstreamModel();
       if (upstream) {
-        addModelWithDeps(upstream);
+        addModelWithAncestors(upstream);
       }
       // Then add ancestors from lookup/unionWith stages (filter to models only)
       for (const ancestor of model.getAncestorsFromStages().filter(isTMModel)) {
-        addModelWithDeps(ancestor);
+        addModelWithAncestors(ancestor);
       }
       // Finally add this model
       this.models.set(model.name, model);
     };
 
     for (const model of config.models) {
-      addModelWithDeps(model);
+      addModelWithAncestors(model);
     }
 
     // Validate immediately - fail fast

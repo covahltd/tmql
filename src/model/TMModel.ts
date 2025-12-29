@@ -63,13 +63,11 @@ export type CollectionMode<TOutput extends Document> =
 
 /**
  * Materialization configuration.
- * `alias` is optional - defaults to the model's `name`.
  */
 export type MaterializeConfig<TOutput extends Document = Document> =
-  | { type: "view"; alias?: string; db?: string }
+  | { type: "view"; db?: string }
   | {
       type: "collection";
-      alias?: string;
       db?: string;
       mode: CollectionMode<TOutput>;
       timeseries?: TypedTimeSeriesOptions<TOutput>;
@@ -201,19 +199,8 @@ export class TMModel<
   /**
    * Get the output collection name (where this model materializes).
    */
-  getOutputCollection(): string {
-    // Use alias if provided, otherwise use model name
-    if ("alias" in this.materialize && this.materialize.alias) {
-      return this.materialize.alias;
-    }
-    return this.name;
-  }
-
-  /**
-   * TMSource implementation.
-   */
   getOutputCollectionName(): string {
-    return this.getOutputCollection();
+    return this.name;
   }
 
   /**
@@ -259,7 +246,7 @@ export class TMModel<
    * Build the $out or $merge stage based on materialization config.
    */
   private buildOutputStage(): Document | null {
-    const outputCollection = this.getOutputCollection();
+    const outputCollection = this.getOutputCollectionName();
     const outputDb = this.getOutputDatabase();
 
     if (this.materialize.type === "view") {

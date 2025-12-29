@@ -353,7 +353,7 @@ export class TMProject {
 
     // Handle view creation separately
     if (model.materialize.type === "view") {
-      const viewName = model.getOutputCollection();
+      const viewName = model.getOutputCollectionName();
       const viewDb = client.db(outputDb);
 
       // Drop existing view if exists
@@ -378,7 +378,7 @@ export class TMProject {
       "timeseries" in model.materialize &&
       model.materialize.timeseries
     ) {
-      const collName = model.getOutputCollection();
+      const collName = model.getOutputCollectionName();
       const db = client.db(outputDb);
 
       // Check if collection exists

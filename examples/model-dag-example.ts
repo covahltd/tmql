@@ -176,7 +176,7 @@ console.log();
 
 // Inspect individual models
 console.log("Model: stgEvents");
-console.log("  Output collection:", stgEvents.getOutputCollection());
+console.log("  Output collection:", stgEvents.getOutputCollectionName());
 console.log(
   "  Pipeline stages:",
   JSON.stringify(stgEvents.getPipelineStages(), null, 2)
@@ -184,7 +184,7 @@ console.log(
 console.log();
 
 console.log("Model: dailyMetrics");
-console.log("  Output collection:", dailyMetrics.getOutputCollection());
+console.log("  Output collection:", dailyMetrics.getOutputCollectionName());
 console.log("  Depends on model:", dailyMetrics.isSourceModel());
 console.log(
   "  Full pipeline:",
@@ -193,7 +193,10 @@ console.log(
 console.log();
 
 console.log("Model: enrichedUserActivity (with lookup)");
-console.log("  Output collection:", enrichedUserActivity.getOutputCollection());
+console.log(
+  "  Output collection:",
+  enrichedUserActivity.getOutputCollectionName()
+);
 console.log("  Depends on model:", enrichedUserActivity.isSourceModel());
 console.log(
   "  Pipeline with lookup:",

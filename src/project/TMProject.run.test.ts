@@ -4,6 +4,10 @@ import { TMCollection } from "../collection/TMCollection";
 import { TMModel } from "../model/TMModel";
 import { TMProject } from "./TMProject";
 
+// ============================================================================
+// Simple DAG Test Data
+// ============================================================================
+
 type RawDoc = { _id: string; value: number; active?: boolean };
 
 const sampleDocs: RawDoc[] = [
@@ -12,8 +16,30 @@ const sampleDocs: RawDoc[] = [
   { _id: "3", value: 30, active: false },
 ];
 
+// ============================================================================
+// Complex DAG with Lookup Test Data
+// ============================================================================
+
+type Order = { _id: string; userId: string; amount: number };
+type User = { _id: string; name: string; tier: string };
+
+const sampleOrders: Order[] = [
+  { _id: "order_1", userId: "user_1", amount: 100 },
+  { _id: "order_2", userId: "user_1", amount: 200 },
+  { _id: "order_3", userId: "user_2", amount: 150 },
+];
+
+const sampleUsers: User[] = [
+  { _id: "user_1", name: "Alice", tier: "gold" },
+  { _id: "user_2", name: "Bob", tier: "silver" },
+];
+
 describe("TMProject.run()", async () => {
   const { client } = await useMemoryMongo();
+
+  // ==========================================================================
+  // Simple Linear DAG: source -> staging -> aggregate
+  // ==========================================================================
 
   const sourceCollection = new TMCollection<RawDoc>({
     collectionName: "raw_docs",
@@ -38,17 +64,77 @@ describe("TMProject.run()", async () => {
     materialize: { type: "collection", mode: TMModel.Mode.Replace },
   });
 
-  const project = new TMProject({
-    name: "test_project",
-    models: [stagingModel, aggregateModel],
+  const simpleProject = new TMProject({
+    name: "simple_project",
+    models: [aggregateModel], // Only specify leaf - deps are auto-discovered
+  });
+
+  // ==========================================================================
+  // Complex DAG with Lookup:
+  //   ordersSource -> stgOrders -> enrichedOrders -> orderSummary
+  //   usersSource  -> stgUsers  --------^
+  // ==========================================================================
+
+  const ordersSource = new TMCollection<Order>({
+    collectionName: "orders",
+  });
+
+  const usersSource = new TMCollection<User>({
+    collectionName: "users",
+  });
+
+  const stgOrders = new TMModel({
+    name: "stg_orders",
+    from: ordersSource,
+    pipeline: (p) => p,
+    materialize: { type: "collection", mode: TMModel.Mode.Replace },
+  });
+
+  const stgUsers = new TMModel({
+    name: "stg_users",
+    from: usersSource,
+    pipeline: (p) => p,
+    materialize: { type: "collection", mode: TMModel.Mode.Replace },
+  });
+
+  const enrichedOrders = new TMModel({
+    name: "enriched_orders",
+    from: stgOrders,
+    pipeline: (p) =>
+      p.lookup({
+        from: stgUsers, // Lookup to another model!
+        localField: "userId",
+        foreignField: "_id",
+        as: "user",
+      }),
+    materialize: { type: "collection", mode: TMModel.Mode.Replace },
+  });
+
+  const orderSummary = new TMModel({
+    name: "order_summary",
+    from: enrichedOrders,
+    pipeline: (p) =>
+      p.group({
+        _id: null,
+        totalOrders: { $count: {} },
+        totalAmount: { $sum: "$amount" },
+      }),
+    materialize: { type: "collection", mode: TMModel.Mode.Replace },
+  });
+
+  const complexProject = new TMProject({
+    name: "complex_project",
+    // Note: stgUsers must be explicitly included because it's a lookup dependency
+    // (not a `from` dependency). Auto-discovery only tracks `from` dependencies.
+    models: [orderSummary, stgUsers],
   });
 
   describe("successful execution", () => {
-    it("should run all models in order", async () => {
+    it("should run simple linear DAG", async () => {
       const db = client.db();
       await db.collection<RawDoc>("raw_docs").insertMany(sampleDocs);
 
-      const result = await project.run({
+      const result = await simpleProject.run({
         client,
         databaseName: db.databaseName,
       });
@@ -68,6 +154,44 @@ describe("TMProject.run()", async () => {
       expect(aggregateDocs[0]?.["total"]).toBe(30); // 10 + 20
       expect(aggregateDocs[0]?.["count"]).toBe(2);
     });
+
+    it("should run complex DAG with model-to-model lookup", async () => {
+      const db = client.db();
+
+      // Insert source data
+      await db.collection<Order>("orders").insertMany(sampleOrders);
+      await db.collection<User>("users").insertMany(sampleUsers);
+
+      const result = await complexProject.run({
+        client,
+        databaseName: db.databaseName,
+      });
+
+      expect(result.success).toBe(true);
+      // All 4 models should run in correct order
+      expect(result.modelsRun).toHaveLength(4);
+      expect(result.modelsRun).toContain("stg_orders");
+      expect(result.modelsRun).toContain("stg_users");
+      expect(result.modelsRun).toContain("enriched_orders");
+      expect(result.modelsRun).toContain("order_summary");
+
+      // stg_users must run before enriched_orders (lookup dependency)
+      const stgUsersIdx = result.modelsRun.indexOf("stg_users");
+      const enrichedIdx = result.modelsRun.indexOf("enriched_orders");
+      expect(stgUsersIdx).toBeLessThan(enrichedIdx);
+
+      // Verify enriched orders have user data
+      const enriched = await db.collection("enriched_orders").find().toArray();
+      expect(enriched).toHaveLength(3);
+      // Each order should have a 'user' array from the lookup
+      expect(enriched[0]).toHaveProperty("user");
+
+      // Verify summary
+      const summary = await db.collection("order_summary").find().toArray();
+      expect(summary).toHaveLength(1);
+      expect(summary[0]?.["totalOrders"]).toBe(3);
+      expect(summary[0]?.["totalAmount"]).toBe(450); // 100 + 200 + 150
+    });
   });
 
   describe("dry run", () => {
@@ -75,7 +199,7 @@ describe("TMProject.run()", async () => {
       const db = client.db();
       await db.collection<RawDoc>("raw_docs").insertMany(sampleDocs);
 
-      const result = await project.run({
+      const result = await simpleProject.run({
         client,
         databaseName: db.databaseName,
         dryRun: true,
@@ -101,7 +225,7 @@ describe("TMProject.run()", async () => {
 
       const onModelStart = vi.fn();
 
-      await project.run({
+      await simpleProject.run({
         client,
         databaseName: db.databaseName,
         onModelStart,
@@ -118,7 +242,7 @@ describe("TMProject.run()", async () => {
 
       const onModelComplete = vi.fn();
 
-      await project.run({
+      await simpleProject.run({
         client,
         databaseName: db.databaseName,
         onModelComplete,
@@ -141,7 +265,7 @@ describe("TMProject.run()", async () => {
       const db = client.db();
       await db.collection<RawDoc>("raw_docs").insertMany(sampleDocs);
 
-      const result = await project.run({
+      const result = await simpleProject.run({
         client,
         databaseName: db.databaseName,
         targets: ["aggregate"],
@@ -157,7 +281,7 @@ describe("TMProject.run()", async () => {
       const db = client.db();
       await db.collection<RawDoc>("raw_docs").insertMany(sampleDocs);
 
-      const result = await project.run({
+      const result = await simpleProject.run({
         client,
         databaseName: db.databaseName,
         exclude: ["aggregate"],

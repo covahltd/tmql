@@ -5,6 +5,7 @@
  * 1. Define typed models with different materialization strategies
  * 2. Chain models into a DAG
  * 3. Execute models in dependency order
+ * 4. Use lookup stages to join data from different sources
  */
 
 import { TMCollection, TMModel, TMProject } from "../src";
@@ -24,6 +25,18 @@ type RawEvent = {
 
 const RawEventsCollection = new TMCollection<RawEvent>({
   collectionName: "raw_events",
+});
+
+type User = {
+  _id: string;
+  email: string;
+  name: string;
+  createdAt: Date;
+  plan: "free" | "pro" | "enterprise";
+};
+
+const UsersCollection = new TMCollection<User>({
+  collectionName: "users",
 });
 
 // ============================================================================
@@ -97,55 +110,98 @@ const userActivity = new TMModel({
   },
 });
 
+/**
+ * Enriched user activity model - joins user activity with user details.
+ * Uses lookup stage to fetch user profile information.
+ * Depends on userActivity (creates another DAG edge).
+ */
+const enrichedUserActivity = new TMModel({
+  name: "enriched_user_activity",
+  from: userActivity, // DAG edge! Depends on userActivity output
+  pipeline: (p) =>
+    p
+      .lookup({
+        from: UsersCollection,
+        localField: "_id", // userId from userActivity
+        foreignField: "_id", // _id from users collection
+        as: "userDetails",
+        // Optional: sub-pipeline to select only needed fields from users
+        pipeline: (userPipeline) =>
+          userPipeline.project({
+            _id: 0,
+            name: 1,
+            email: 1,
+            plan: 1,
+          }),
+      })
+      // Project final shape - userDetails is an array (MongoDB's lookup behavior)
+      .project({
+        _id: 1,
+        eventCount: 1,
+        lastActivity: 1,
+        eventTypes: 1,
+        userDetails: 1, // Array of matched user documents
+      }),
+  materialize: {
+    type: "collection",
+    mode: TMModel.Mode.Replace,
+  },
+});
+
 // ============================================================================
 // Create Project with Models
 // ============================================================================
 
 const analyticsProject = new TMProject({
   name: "analytics",
-  models: [stgEvents, dailyMetrics, userActivity],
+  models: [stgEvents, dailyMetrics, userActivity, enrichedUserActivity],
 });
 
 // ============================================================================
 // Usage Examples
 // ============================================================================
 
-async function main() {
-  console.log("=== DAG Model Example ===\n");
+console.log("=== DAG Model Example ===\n");
 
-  // 1. View the execution plan
-  console.log("Execution Plan:");
-  const plan = analyticsProject.plan();
-  console.log(plan.toString());
-  console.log();
+// View the execution plan
+console.log("Execution Plan:");
+const plan = analyticsProject.plan();
+console.log(plan.toString());
+console.log();
 
-  // 2. View as Mermaid diagram
-  console.log("Mermaid Diagram:");
-  console.log(analyticsProject.toMermaid());
-  console.log();
+// View as Mermaid diagram
+console.log("Mermaid Diagram:");
+console.log(analyticsProject.toMermaid());
+console.log();
 
-  // 3. Inspect individual models
-  console.log("Model: stgEvents");
-  console.log("  Output collection:", stgEvents.getOutputCollection());
-  console.log(
-    "  Pipeline stages:",
-    JSON.stringify(stgEvents.getPipelineStages(), null, 2)
-  );
-  console.log();
+// Inspect individual models
+console.log("Model: stgEvents");
+console.log("  Output collection:", stgEvents.getOutputCollection());
+console.log(
+  "  Pipeline stages:",
+  JSON.stringify(stgEvents.getPipelineStages(), null, 2)
+);
+console.log();
 
-  console.log("Model: dailyMetrics");
-  console.log("  Output collection:", dailyMetrics.getOutputCollection());
-  console.log("  Depends on model:", dailyMetrics.isSourceModel());
-  console.log(
-    "  Full pipeline:",
-    JSON.stringify(dailyMetrics.buildPipeline(), null, 2)
-  );
-  console.log();
+console.log("Model: dailyMetrics");
+console.log("  Output collection:", dailyMetrics.getOutputCollection());
+console.log("  Depends on model:", dailyMetrics.isSourceModel());
+console.log(
+  "  Full pipeline:",
+  JSON.stringify(dailyMetrics.buildPipeline(), null, 2)
+);
+console.log();
 
-  // 4. To actually run (requires MongoDB connection):
-  // await tmql.connect("mongodb://localhost:27017");
-  // const result = await analyticsProject.run({ databaseName: "analytics_db" });
-  // console.log("Run result:", result);
-}
+console.log("Model: enrichedUserActivity (with lookup)");
+console.log("  Output collection:", enrichedUserActivity.getOutputCollection());
+console.log("  Depends on model:", enrichedUserActivity.isSourceModel());
+console.log(
+  "  Pipeline with lookup:",
+  JSON.stringify(enrichedUserActivity.buildPipeline(), null, 2)
+);
+console.log();
 
-main().catch(console.error);
+// To actually run (requires MongoDB connection):
+// await tmql.connect("mongodb://localhost:27017");
+// const result = await analyticsProject.run({ databaseName: "analytics_db" });
+// console.log("Run result:", result);

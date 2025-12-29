@@ -17,11 +17,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Core Classes
 
-- **TMPipeline**: The main aggregation pipeline builder class located in `src/pipeline/TMPipeline.ts` with two generic types:
+- **TMPipeline**: The main aggregation pipeline builder class located in `src/pipeline/TMPipeline.ts` with three generic types:
   - `StartingDocs`: The original document schema (union types supported)
   - `PreviousStageDocs`: The current document schema after previous pipeline stages (defaults to StartingDocs)
+  - `Mode`: Lookup mode - `"runtime"` (default) or `"model"` for DAG pipelines
 
   Each pipeline method returns a new `TMPipeline` instance with updated types to maintain type safety throughout the chain.
+
+- **TMModel**: Located in `src/model/TMModel.ts`. A named, materializable pipeline with typed input/output. Models can depend on collections or other models, forming a DAG. Generic parameters:
+  - `TName`: Model name literal (e.g., `"stg_events"`)
+  - `TInput`: Input document type from source
+  - `TOutput`: Output document type after pipeline
+  - `TMat`: Materialization config type
+
+  Static presets for materialization modes:
+  - `TMModel.Mode.Replace` - Uses `$out` to replace entire collection
+  - `TMModel.Mode.Upsert` - Uses `$merge` with `on: "_id"`, upsert semantics
+  - `TMModel.Mode.Append` - Uses `$merge` with `whenMatched: "fail"`, insert only
+
+- **TMProject**: Located in `src/project/TMProject.ts`. DAG orchestrator that manages models, resolves dependencies, validates the graph, and executes models in topological order. Models are provided at construction time and validated immediately (immutable after creation). Auto-discovers all dependencies (upstream via `from` and lookup via `lookup`/`unionWith` stages) - just specify leaf models.
+
+- **TMSource**: Located in `src/source/TMSource.ts`. Unified interface that both `TMCollection` and `TMModel` implement, allowing them to be used interchangeably as pipeline sources.
 
 ### Type System Architecture
 

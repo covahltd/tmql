@@ -66,6 +66,7 @@
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
     "test": "vitest",
+    "test:ci": "vitest run",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage"
   }

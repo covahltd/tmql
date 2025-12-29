@@ -29,8 +29,14 @@ import {
 import { TMPipeline } from "../pipeline/TMPipeline";
 import { Document } from "../utils/core";
 import { tmql } from "../singleton/tmql";
+import { TMSource } from "../source/TMSource";
 
-export class TMCollection<Docs extends Document> {
+export class TMCollection<Docs extends Document> implements TMSource<Docs> {
+  readonly sourceType = "collection" as const;
+
+  /** @internal Phantom type for inference */
+  readonly __outputType!: Docs;
+
   private client: MongoClient | undefined;
   private databaseName: string | undefined;
   private collectionName: string;
@@ -48,6 +54,10 @@ export class TMCollection<Docs extends Document> {
   // Accessors
 
   getCollectionName(): string {
+    return this.collectionName;
+  }
+
+  getOutputCollectionName(): string {
     return this.collectionName;
   }
 

@@ -18,11 +18,7 @@ import {
 } from "../stages/replaceRoot";
 import { ResolveUnionWithOutput } from "../stages/unionWith";
 import { AggregationCursor, MongoClient } from "mongodb";
-import {
-  type TMSource,
-  type InferSourceType,
-  getSourceCollectionName,
-} from "../source/TMSource";
+import { type TMSource, type InferSourceType } from "../source/TMSource";
 
 // ============================================================================
 // Lookup Mode - Controls what sources can be used in lookup/unionWith
@@ -176,8 +172,8 @@ export class TMPipeline<
   > {
     const { from, pipeline, ...$lookupRest } = $lookup;
 
-    // Get collection name (throws if ephemeral model)
-    const collectionName = getSourceCollectionName(from as TMSource<any>);
+    // Get collection name from source
+    const collectionName = (from as TMSource<any>).getOutputCollectionName();
 
     const resolvedPipeline =
       pipeline ?
@@ -287,8 +283,8 @@ export class TMPipeline<
   > {
     const { coll, pipeline } = $unionWith;
 
-    // Get collection name (throws if ephemeral model)
-    const collectionName = getSourceCollectionName(coll as TMSource<any>);
+    // Get collection name from source
+    const collectionName = (coll as TMSource<any>).getOutputCollectionName();
 
     const resolvedPipeline =
       pipeline ?
@@ -343,5 +339,5 @@ export class TMPipeline<
   }
 }
 
-export type InferOutputType<Pipeline extends TMPipeline<any, any>> =
+export type InferPipelineOutput<Pipeline extends TMPipeline<any, any>> =
   Pipeline extends TMPipeline<any, infer Output> ? Output : never;

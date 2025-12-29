@@ -8,7 +8,7 @@
  * - Product performance metrics
  */
 
-import { TMPipeline, InferOutputType } from "../src/pipeline/TMPipeline";
+import { TMPipeline, InferPipelineOutput } from "../src/pipeline/TMPipeline";
 
 // ============================================================================
 // Schema Definitions
@@ -66,7 +66,9 @@ const salesByCategoryPipeline = new TMPipeline<OrderSchema>()
     totalRevenue: 1,
   });
 
-type SalesByCategoryResult = InferOutputType<typeof salesByCategoryPipeline>;
+type SalesByCategoryResult = InferPipelineOutput<
+  typeof salesByCategoryPipeline
+>;
 
 // ============================================================================
 // Example 2: Customer Purchase Analysis with Lookup
@@ -94,7 +96,7 @@ const customerPurchaseAnalysisPipeline = new TMPipeline<OrderSchema>()
     averageOrderValue: 1,
   });
 
-type CustomerPurchaseResult = InferOutputType<
+type CustomerPurchaseResult = InferPipelineOutput<
   typeof customerPurchaseAnalysisPipeline
 >;
 
@@ -121,7 +123,7 @@ const productPerformancePipeline = new TMPipeline<OrderSchema>()
     totalRevenue: 1,
   });
 
-type ProductPerformanceResult = InferOutputType<
+type ProductPerformanceResult = InferPipelineOutput<
   typeof productPerformancePipeline
 >;
 
@@ -156,7 +158,9 @@ const geographicSalesPipeline = new TMPipeline<OrderSchema>()
     averageOrderValue: 1,
   });
 
-type GeographicSalesResult = InferOutputType<typeof geographicSalesPipeline>;
+type GeographicSalesResult = InferPipelineOutput<
+  typeof geographicSalesPipeline
+>;
 
 // ============================================================================
 // Export types for use in application

@@ -8,7 +8,7 @@
  * - Performance metrics calculation
  */
 
-import { TMPipeline, InferOutputType } from "../src/pipeline/TMPipeline";
+import { TMPipeline, InferPipelineOutput } from "../src/pipeline/TMPipeline";
 
 // ============================================================================
 // Schema Definitions
@@ -84,7 +84,7 @@ const dailyEventSummaryPipeline = new TMPipeline<EventSchema>()
     uniqueUserCount: 1,
   });
 
-type DailyEventSummary = InferOutputType<typeof dailyEventSummaryPipeline>;
+type DailyEventSummary = InferPipelineOutput<typeof dailyEventSummaryPipeline>;
 
 // ============================================================================
 // Example 2: Conversion Funnel Analysis
@@ -109,7 +109,7 @@ const conversionFunnelPipeline = new TMPipeline<EventSchema>()
     uniqueUsers: { $size: "$uniqueUsers" },
   });
 
-type ConversionFunnel = InferOutputType<typeof conversionFunnelPipeline>;
+type ConversionFunnel = InferPipelineOutput<typeof conversionFunnelPipeline>;
 
 // ============================================================================
 // Example 3: Geographic Analysis
@@ -135,7 +135,9 @@ const geographicAnalysisPipeline = new TMPipeline<EventSchema>()
     uniqueSessions: { $size: "$uniqueSessions" },
   });
 
-type GeographicAnalysis = InferOutputType<typeof geographicAnalysisPipeline>;
+type GeographicAnalysis = InferPipelineOutput<
+  typeof geographicAnalysisPipeline
+>;
 
 // ============================================================================
 // Example 4: Device Performance Analysis
@@ -166,7 +168,7 @@ const devicePerformancePipeline = new TMPipeline<SessionSchema>()
     averagePageViews: 1,
   });
 
-type DevicePerformance = InferOutputType<typeof devicePerformancePipeline>;
+type DevicePerformance = InferPipelineOutput<typeof devicePerformancePipeline>;
 
 // ============================================================================
 // Example 5: Product Performance Analysis
@@ -189,7 +191,9 @@ const productPerformancePipeline = new TMPipeline<EventSchema>()
     totalEvents: 1,
   });
 
-type ProductPerformance = InferOutputType<typeof productPerformancePipeline>;
+type ProductPerformance = InferPipelineOutput<
+  typeof productPerformancePipeline
+>;
 
 // ============================================================================
 // Export types for use in application

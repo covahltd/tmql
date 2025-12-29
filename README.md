@@ -234,6 +234,86 @@ await users.bulkWrite([
 
 All methods use MongoDB driver types for parameters and return values, providing full type safety while maintaining familiar MongoDB semantics.
 
+## DAG Model Composition
+
+tmql supports composing pipelines into a Directed Acyclic Graph (DAG) with typed dependencies and configurable materialization strategies, inspired by dbt's approach but tailored for MongoDB.
+
+### Defining Models
+
+Models are standalone pipeline definitions with typed input/output:
+
+```typescript
+import { TMCollection, TMModel, TMProject } from "tmql";
+
+// Source collection
+const RawEventsCollection = new TMCollection<RawEvent>({
+  collectionName: "raw_events",
+});
+
+// Staging model - filters and transforms raw data
+const stgEvents = new TMModel({
+  name: "stg_events",
+  from: RawEventsCollection,
+  pipeline: (p) =>
+    p
+      .match({ _deleted: { $ne: true } })
+      .set({ eventDate: { $dateTrunc: { date: "$timestamp", unit: "day" } } }),
+  materialize: { type: "collection", mode: "replace" },
+});
+
+// Downstream model - depends on stgEvents (type-safe!)
+const dailyMetrics = new TMModel({
+  name: "daily_metrics",
+  from: stgEvents,
+  pipeline: (p) =>
+    p.group({
+      _id: "$eventDate",
+      totalEvents: { $count: {} },
+      uniqueUsers: { $addToSet: "$userId" },
+    }),
+  materialize: {
+    type: "collection",
+    mode: {
+      $merge: { on: "_id", whenMatched: "replace", whenNotMatched: "insert" },
+    },
+  },
+});
+```
+
+### Creating a Project
+
+Projects orchestrate model execution with dependency resolution:
+
+```typescript
+const analyticsProject = new TMProject({
+  name: "analytics",
+  models: [stgEvents, dailyMetrics],
+});
+
+// View execution plan
+console.log(analyticsProject.plan().toString());
+// Stage 1: stg_events
+// Stage 2: daily_metrics
+
+// View as Mermaid diagram
+console.log(analyticsProject.toMermaid());
+
+// Run all models in dependency order
+await analyticsProject.run({
+  client: mongoClient,
+  databaseName: "analytics_db",
+});
+```
+
+### Materialization Strategies
+
+- **view** - Creates a MongoDB view
+- **collection** with modes:
+  - `"replace"` - Drop and recreate collection
+  - `"append"` - Insert new documents
+  - `"upsert"` - Update or insert based on `_id`
+  - `{ $merge: { ... } }` - Fine-grained merge control
+
 ## Status
 
 tmql is actively under development. We're continuously working on improving type safety, adding new features, and enhancing the developer experience. Contributions, feedback, and suggestions are welcome!

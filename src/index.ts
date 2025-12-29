@@ -8,31 +8,24 @@
 export { tmql } from "./singleton/tmql";
 
 export { TMPipeline } from "./pipeline/TMPipeline";
-export type { InferOutputType, LookupMode } from "./pipeline/TMPipeline";
+export type { InferPipelineOutput, LookupMode } from "./pipeline/TMPipeline";
 
 export { TMCollection } from "./collection/TMCollection";
 export type { InferCollectionType } from "./collection/TMCollection";
 
 // DAG Pipeline Composition
-export { TMModel, TMProject, createModel } from "./model";
+export { TMModel } from "./model/TMModel";
 export type {
-  // Model types
   ModelConfig,
   MaterializeConfig,
   TypedTimeSeriesOptions,
-  // Mode types
   CollectionMode,
   MergeOptions,
-  // Model helpers
-  ModelName,
-  ModelInput,
-  ModelOutput,
-  ModelMaterialize,
-  IsEphemeral,
   InferModelOutput,
-} from "./model";
+} from "./model/TMModel";
+
+export { TMProject } from "./project/TMProject";
 export type {
-  // Project types
   ProjectConfig,
   RunOptions,
   ModelRunStats,
@@ -41,7 +34,7 @@ export type {
   ValidationResult,
   ValidationError,
   ValidationWarning,
-} from "./model";
+} from "./project/TMProject";
 // TMSource - unified source type for model-aware lookups
 export type { TMSource, InferSourceType } from "./source/TMSource";
 

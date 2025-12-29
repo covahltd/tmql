@@ -7,7 +7,7 @@
  * 3. Execute models in dependency order
  */
 
-import { TMCollection, TMProject, createModel } from "../src";
+import { TMCollection, TMModel, TMProject } from "../src";
 
 // ============================================================================
 // Define Source Collections (your existing MongoDB collections)
@@ -27,14 +27,14 @@ const RawEventsCollection = new TMCollection<RawEvent>({
 });
 
 // ============================================================================
-// Define Models
+// Define Models (standalone, not registered to a project)
 // ============================================================================
 
 /**
  * Staging model - filters out deleted events and adds eventDate.
  * Uses 'collection' materialization with 'replace' mode.
  */
-const stgEvents = createModel({
+const stgEvents = new TMModel({
   name: "stg_events",
   from: RawEventsCollection,
   pipeline: (p) =>
@@ -62,7 +62,7 @@ const stgEvents = createModel({
  * Daily metrics model - aggregates events by date.
  * Depends on stgEvents (creates DAG edge).
  */
-const dailyMetrics = createModel({
+const dailyMetrics = new TMModel({
   name: "daily_metrics",
   from: stgEvents, // DAG edge! Depends on stgEvents output
   pipeline: (p) =>
@@ -87,7 +87,7 @@ const dailyMetrics = createModel({
 /**
  * User activity model - aggregates user activity stats.
  */
-const userActivity = createModel({
+const userActivity = new TMModel({
   name: "user_activity",
   from: stgEvents,
   pipeline: (p) =>
@@ -103,25 +103,14 @@ const userActivity = createModel({
   },
 });
 
-/**
- * Ephemeral model - not materialized, inlined into downstream models.
- */
-const highActivityUsers = createModel({
-  name: "high_activity_users",
-  from: userActivity,
-  pipeline: (p) => p.match({ eventCount: { $gte: 100 } }),
-  // No materialize = ephemeral by default
+// ============================================================================
+// Create Project with Models
+// ============================================================================
+
+const analyticsProject = new TMProject({
+  name: "analytics",
+  models: [stgEvents, dailyMetrics, userActivity],
 });
-
-// ============================================================================
-// Create Project and Register Models
-// ============================================================================
-
-const analyticsProject = new TMProject({ name: "analytics" })
-  .add(stgEvents)
-  .add(dailyMetrics)
-  .add(userActivity)
-  .add(highActivityUsers);
 
 // ============================================================================
 // Usage Examples
@@ -130,32 +119,20 @@ const analyticsProject = new TMProject({ name: "analytics" })
 async function main() {
   console.log("=== DAG Model Example ===\n");
 
-  // 1. Validate the DAG
-  const validation = analyticsProject.validate();
-  console.log("Validation:", validation.valid ? "✓ Valid" : "✗ Invalid");
-  if (!validation.valid) {
-    console.log("Errors:", validation.errors);
-  }
-  if (validation.warnings.length > 0) {
-    console.log("Warnings:", validation.warnings);
-  }
-  console.log();
-
-  // 2. View the execution plan
+  // 1. View the execution plan
   console.log("Execution Plan:");
   const plan = analyticsProject.plan();
   console.log(plan.toString());
   console.log();
 
-  // 3. View as Mermaid diagram
+  // 2. View as Mermaid diagram
   console.log("Mermaid Diagram:");
   console.log(analyticsProject.toMermaid());
   console.log();
 
-  // 4. Inspect individual models
+  // 3. Inspect individual models
   console.log("Model: stgEvents");
   console.log("  Output collection:", stgEvents.getOutputCollection());
-  console.log("  Is ephemeral:", stgEvents.isEphemeral());
   console.log(
     "  Pipeline stages:",
     JSON.stringify(stgEvents.getPipelineStages(), null, 2)
@@ -171,7 +148,7 @@ async function main() {
   );
   console.log();
 
-  // 5. To actually run (requires MongoDB connection):
+  // 4. To actually run (requires MongoDB connection):
   // await tmql.connect("mongodb://localhost:27017");
   // const result = await analyticsProject.run({ databaseName: "analytics_db" });
   // console.log("Run result:", result);

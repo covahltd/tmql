@@ -58,11 +58,7 @@ export class TMCollection<Docs extends Document> implements TMSource<Docs> {
     return this.collectionName;
   }
 
-  // ITMSource implementation
-  isEphemeral(): boolean {
-    return false; // Collections are never ephemeral
-  }
-
+  // TMSource implementation
   getOutputCollectionName(): string {
     return this.collectionName;
   }

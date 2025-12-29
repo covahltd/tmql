@@ -8,7 +8,7 @@
  * - Content search and categorization
  */
 
-import { TMPipeline, InferOutputType } from "../src/pipeline/TMPipeline";
+import { TMPipeline, InferPipelineOutput } from "../src/pipeline/TMPipeline";
 
 // ============================================================================
 // Schema Definitions
@@ -88,7 +88,9 @@ const publishedPostsListPipeline = new TMPipeline<BlogPostSchema>()
     readingTime: "$metadata.readingTime",
   });
 
-type PublishedPostsList = InferOutputType<typeof publishedPostsListPipeline>;
+type PublishedPostsList = InferPipelineOutput<
+  typeof publishedPostsListPipeline
+>;
 
 // ============================================================================
 // Example 2: Blog Post with Comments (Full Post View)
@@ -114,7 +116,7 @@ const postWithCommentsPipeline = new TMPipeline<BlogPostSchema>()
     metadata: 1,
   });
 
-type PostWithComments = InferOutputType<typeof postWithCommentsPipeline>;
+type PostWithComments = InferPipelineOutput<typeof postWithCommentsPipeline>;
 
 // ============================================================================
 // Example 3: Content Analytics by Category
@@ -154,7 +156,7 @@ const contentAnalyticsPipeline = new TMPipeline<BlogPostSchema>()
     engagementRate: 1,
   });
 
-type ContentAnalytics = InferOutputType<typeof contentAnalyticsPipeline>;
+type ContentAnalytics = InferPipelineOutput<typeof contentAnalyticsPipeline>;
 
 // ============================================================================
 // Example 4: Author Performance Analysis
@@ -191,7 +193,7 @@ const authorPerformancePipeline = new TMPipeline<BlogPostSchema>()
     latestPostDate: 1,
   });
 
-type AuthorPerformance = InferOutputType<typeof authorPerformancePipeline>;
+type AuthorPerformance = InferPipelineOutput<typeof authorPerformancePipeline>;
 
 // ============================================================================
 // Example 5: Content Search Results
@@ -235,7 +237,7 @@ const contentSearchPipeline = new TMPipeline<BlogPostSchema>()
     readingTime: "$metadata.readingTime",
   });
 
-type ContentSearchResults = InferOutputType<typeof contentSearchPipeline>;
+type ContentSearchResults = InferPipelineOutput<typeof contentSearchPipeline>;
 
 // ============================================================================
 // Export types for use in application

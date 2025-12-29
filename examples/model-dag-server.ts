@@ -14,7 +14,7 @@ declare const process: {
 
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { MongoClient } from "mongodb";
-import { TMCollection, TMProject } from "../src";
+import { TMCollection, TMModel, TMProject } from "../src";
 
 // ============================================================================
 // Schema Types
@@ -77,18 +77,14 @@ function generateSampleEvents(count: number): RawEvent[] {
 }
 
 // ============================================================================
-// Model Definitions using project.model() factory pattern
+// Model Definitions
 // ============================================================================
 
 const RawEventsCollection = new TMCollection<RawEvent>({
   collectionName: "raw_events",
 });
 
-// Create project first, then define models on it
-const analyticsProject = new TMProject({ name: "analytics" });
-
-// Models are created AND registered in one step using project.model()
-const stgEvents = analyticsProject.model({
+const stgEvents = new TMModel({
   name: "stg_events",
   from: RawEventsCollection,
   pipeline: (p) =>
@@ -112,7 +108,7 @@ const stgEvents = analyticsProject.model({
   },
 });
 
-analyticsProject.model({
+const dailyMetrics = new TMModel({
   name: "daily_metrics",
   from: stgEvents, // Type-safe reference to upstream model
   pipeline: (p) =>
@@ -134,7 +130,7 @@ analyticsProject.model({
   },
 });
 
-analyticsProject.model({
+const userActivity = new TMModel({
   name: "user_activity",
   from: stgEvents,
   pipeline: (p) =>
@@ -151,11 +147,20 @@ analyticsProject.model({
 });
 
 // ============================================================================
+// Create Project with Models
+// ============================================================================
+
+const analyticsProject = new TMProject({
+  name: "analytics",
+  models: [stgEvents, dailyMetrics, userActivity],
+});
+
+// ============================================================================
 // Main
 // ============================================================================
 
 async function main() {
-  console.log("🚀 Starting MongoDB Memory Server...\n");
+  console.log("Starting MongoDB Memory Server...\n");
 
   const mongod = await MongoMemoryServer.create({
     instance: {
@@ -164,11 +169,11 @@ async function main() {
   });
 
   const uri = mongod.getUri();
-  console.log("═".repeat(60));
-  console.log("📡 MongoDB Connection URI:");
+  console.log("=".repeat(60));
+  console.log("MongoDB Connection URI:");
   console.log(`   ${uri}`);
-  console.log("═".repeat(60));
-  console.log("\n🔗 Connect with MongoDB Compass using the URI above\n");
+  console.log("=".repeat(60));
+  console.log("\nConnect with MongoDB Compass using the URI above\n");
 
   const client = new MongoClient(uri);
   await client.connect();
@@ -176,43 +181,34 @@ async function main() {
   const db = client.db("analytics_db");
 
   // Insert sample data
-  console.log("📦 Inserting sample data...");
+  console.log("Inserting sample data...");
   const sampleEvents = generateSampleEvents(200);
   await db.collection<RawEvent>("raw_events").insertMany(sampleEvents);
-  console.log(`   ✓ Inserted ${sampleEvents.length} raw events`);
+  console.log(`   Inserted ${sampleEvents.length} raw events`);
   console.log(
-    `   ✓ ~${sampleEvents.filter((e) => e._deleted).length} are soft-deleted\n`
+    `   ~${sampleEvents.filter((e) => e._deleted).length} are soft-deleted\n`
   );
 
-  // Validate the DAG
-  console.log("📋 Validating DAG...");
-  const validation = analyticsProject.validate();
-  if (!validation.valid) {
-    console.log("   ✗ Validation failed:", validation.errors);
-    return;
-  }
-  console.log("   ✓ DAG is valid\n");
-
   // Show execution plan
-  console.log("📋 Execution Plan:");
+  console.log("Execution Plan:");
   console.log(analyticsProject.plan().toString());
   console.log();
 
   // Show Mermaid diagram
-  console.log("📊 DAG Diagram (Mermaid):");
+  console.log("DAG Diagram (Mermaid):");
   console.log(analyticsProject.toMermaid());
   console.log();
 
   // Run all models using project.run()
-  console.log("⚙️  Running models via project.run()...\n");
+  console.log("Running models via project.run()...\n");
   const result = await analyticsProject.run({
     client,
     databaseName: "analytics_db",
-    onModelStart: (name) => console.log(`   ▶ Starting ${name}...`),
+    onModelStart: (name) => console.log(`   > Starting ${name}...`),
     onModelComplete: (name, stats) =>
-      console.log(`   ✓ Completed ${name} (${stats.durationMs}ms)`),
+      console.log(`   Completed ${name} (${stats.durationMs}ms)`),
     onModelError: (name, error) =>
-      console.log(`   ✗ Failed ${name}: ${error.message}`),
+      console.log(`   Failed ${name}: ${error.message}`),
   });
 
   // Get counts for summary
@@ -222,9 +218,9 @@ async function main() {
 
   // Summary
   console.log();
-  console.log("═".repeat(60));
+  console.log("=".repeat(60));
   console.log(
-    `✅ Project run ${result.success ? "succeeded" : "failed"} in ${result.totalDurationMs}ms`
+    `Project run ${result.success ? "succeeded" : "failed"} in ${result.totalDurationMs}ms`
   );
   console.log(
     `   Models run: ${result.modelsRun.length} (${result.modelsRun.join(", ")})`
@@ -234,14 +230,14 @@ async function main() {
   }
   console.log();
   console.log("Collections in analytics_db:");
-  console.log("   • raw_events      - Source data (200 events)");
+  console.log("   - raw_events      - Source data (200 events)");
   console.log(
-    `   • stg_events      - Staged events (${stgCount} after filtering)`
+    `   - stg_events      - Staged events (${stgCount} after filtering)`
   );
-  console.log(`   • daily_metrics   - Daily aggregates (${dailyCount} days)`);
-  console.log(`   • user_activity   - Per-user stats (${userCount} users)`);
-  console.log("═".repeat(60));
-  console.log("\n🔍 Open MongoDB Compass and explore the collections!");
+  console.log(`   - daily_metrics   - Daily aggregates (${dailyCount} days)`);
+  console.log(`   - user_activity   - Per-user stats (${userCount} users)`);
+  console.log("=".repeat(60));
+  console.log("\nOpen MongoDB Compass and explore the collections!");
   console.log("   Press Ctrl+C to stop the server.\n");
 
   // Keep the server running
@@ -250,7 +246,7 @@ async function main() {
 
 // Handle shutdown gracefully
 process.on("SIGINT", () => {
-  console.log("\n\n👋 Shutting down...");
+  console.log("\n\nShutting down...");
   process.exit(0);
 });
 

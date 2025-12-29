@@ -3,19 +3,10 @@
  *
  * Manages a collection of models, resolves dependencies,
  * and executes them in topological order.
- *
- * @see docs/rfc-001-dag-pipeline-composition.md
  */
 
 import { MongoClient } from "mongodb";
-import { Document } from "../utils/core";
-import {
-  TMModel,
-  createModel,
-  ModelConfig,
-  MaterializeConfig,
-} from "./TMModel";
-import { TMSource, InferSourceType } from "../source/TMSource";
+import { TMModel } from "../model/TMModel";
 import { tmql } from "../singleton/tmql";
 
 // ============================================================================
@@ -23,7 +14,8 @@ import { tmql } from "../singleton/tmql";
 // ============================================================================
 
 export type ProjectConfig = {
-  name?: string;
+  name: string;
+  models: TMModel<any, any, any, any>[];
   defaultDatabase?: string;
 };
 
@@ -80,7 +72,7 @@ export type ValidationError = {
 };
 
 export type ValidationWarning = {
-  type: "orphan" | "unused_ephemeral";
+  type: "orphan";
   message: string;
   models: string[];
 };
@@ -92,121 +84,52 @@ export type ValidationWarning = {
 /**
  * TMProject - DAG orchestrator for TMModels.
  *
+ * Models are provided at construction time and validated immediately.
+ * The project is immutable after creation.
+ *
  * @example
  * ```typescript
- * const project = new TMProject({ name: "analytics" })
- *   .add(stgEvents)
- *   .add(dailyMetrics);
+ * import { stgEvents, dailyMetrics } from "./models/analytics";
+ *
+ * const analyticsProject = new TMProject({
+ *   name: "analytics",
+ *   models: [stgEvents, dailyMetrics],
+ * });
  *
  * // See execution plan
- * console.log(project.toMermaid());
+ * console.log(analyticsProject.toMermaid());
  *
  * // Run all models
- * await project.run();
- *
- * // Run specific targets
- * await project.run({ targets: ["daily_metrics"] });
+ * await analyticsProject.run();
  * ```
  */
 export class TMProject {
   readonly name: string;
-  private readonly defaultDatabase?: string;
-  private models = new Map<string, TMModel<any, any, any, any>>();
+  private readonly defaultDatabase: string | undefined;
+  private readonly models: Map<string, TMModel<any, any, any, any>>;
 
-  constructor(config: ProjectConfig = {}) {
-    this.name = config.name ?? "default";
-    if (config.defaultDatabase !== undefined) {
-      this.defaultDatabase = config.defaultDatabase;
-    }
-  }
+  constructor(config: ProjectConfig) {
+    this.name = config.name;
+    this.defaultDatabase =
+      config.defaultDatabase !== undefined ? config.defaultDatabase : undefined;
 
-  /**
-   * Register a model with this project.
-   */
-  add<T extends TMModel<any, any, any, any>>(model: T): this {
-    if (this.models.has(model.name)) {
+    // Build models map
+    this.models = new Map(config.models.map((m) => [m.name, m]));
+
+    // Validate immediately - fail fast
+    const validation = this.validate();
+    if (!validation.valid) {
+      const errorMessages = validation.errors
+        .map((e) => `  - ${e.message}`)
+        .join("\n");
       throw new Error(
-        `Model "${model.name}" is already registered in project "${this.name}"`
+        `Project "${this.name}" has validation errors:\n${errorMessages}`
       );
     }
-    this.models.set(model.name, model);
-    return this;
   }
 
   /**
-   * Register a model and automatically add all its upstream dependencies.
-   * Traverses the `from` property to discover the full dependency chain.
-   *
-   * @example
-   * ```typescript
-   * // Only need to add the leaf model - dependencies are auto-discovered
-   * project.addWithDependencies(dailyMetrics);
-   * // Automatically adds: stgEvents (via from: stgEvents)
-   * ```
-   */
-  addWithDependencies<T extends TMModel<any, any, any, any>>(model: T): this {
-    // Collect all upstream models via BFS
-    const toProcess: TMModel<any, any, any, any>[] = [model];
-    const visited = new Set<string>();
-
-    while (toProcess.length > 0) {
-      const current = toProcess.shift()!;
-
-      if (visited.has(current.name)) {
-        continue;
-      }
-      visited.add(current.name);
-
-      // Add if not already registered
-      if (!this.models.has(current.name)) {
-        this.models.set(current.name, current);
-      }
-
-      // Check if source is a model (not a collection)
-      if (current.isSourceModel()) {
-        const upstream = current.getUpstreamModel();
-        if (upstream && !visited.has(upstream.name)) {
-          toProcess.push(upstream);
-        }
-      }
-    }
-
-    return this;
-  }
-
-  /**
-   * Create a new model and automatically register it with this project.
-   * Combines `createModel()` + `add()` in a single call.
-   *
-   * @example
-   * ```typescript
-   * const project = new TMProject({ name: "analytics" });
-   *
-   * const stgEvents = project.model({
-   *   name: "stg_events",
-   *   from: RawEventsCollection,
-   *   pipeline: (p) => p.match({ _deleted: { $ne: true } }),
-   *   materialize: { type: "collection", mode: "replace" },
-   * });
-   *
-   * // stgEvents is now created AND registered
-   * ```
-   */
-  model<
-    const TName extends string,
-    const TFrom extends TMSource<any>,
-    TOutput extends Document,
-    const TMat extends MaterializeConfig<TOutput> = { type: "ephemeral" },
-  >(
-    config: ModelConfig<TName, TFrom, TOutput, TMat>
-  ): TMModel<TName, InferSourceType<TFrom>, TOutput, TMat> {
-    const m = createModel(config);
-    this.add(m);
-    return m;
-  }
-
-  /**
-   * Get a registered model by name.
+   * Get a model by name.
    */
   get<TName extends string>(
     name: TName
@@ -215,7 +138,7 @@ export class TMProject {
   }
 
   /**
-   * Get all registered models.
+   * Get all models.
    */
   getModels(): TMModel<any, any, any, any>[] {
     return Array.from(this.models.values());
@@ -228,7 +151,7 @@ export class TMProject {
     const { targets, exclude = [] } = options;
 
     // Get models to run
-    let modelsToRun = this.getModelsToRun(targets, exclude);
+    const modelsToRun = this.getModelsToRun(targets, exclude);
 
     // Build dependency graph
     const deps = this.buildDependencyGraph(modelsToRun);
@@ -254,7 +177,7 @@ export class TMProject {
     const errors: ValidationError[] = [];
     const warnings: ValidationWarning[] = [];
 
-    // Check for duplicate names (already enforced in add(), but check anyway)
+    // Check for duplicate names
     const names = new Set<string>();
     for (const model of this.models.values()) {
       if (names.has(model.name)) {
@@ -273,7 +196,7 @@ export class TMProject {
       if (upstream && !this.models.has(upstream.name)) {
         errors.push({
           type: "missing_ref",
-          message: `Model "${model.name}" depends on "${upstream.name}" which is not registered`,
+          message: `Model "${model.name}" depends on "${upstream.name}" which is not in this project`,
           models: [model.name, upstream.name],
         });
       }
@@ -289,7 +212,7 @@ export class TMProject {
       });
     }
 
-    // Check for orphan models (no downstream dependencies, not a target)
+    // Check for orphan models (no downstream dependencies)
     const hasDownstream = new Set<string>();
     for (const model of this.models.values()) {
       const upstream = model.getUpstreamModel();
@@ -298,12 +221,14 @@ export class TMProject {
       }
     }
     const orphans = Array.from(this.models.values())
-      .filter((m) => !hasDownstream.has(m.name) && m.isEphemeral())
+      .filter((m) => !hasDownstream.has(m.name))
       .map((m) => m.name);
-    if (orphans.length > 0) {
+
+    // Only warn if there are multiple orphans (leaf nodes are expected)
+    if (orphans.length > 1) {
       warnings.push({
-        type: "unused_ephemeral",
-        message: `Ephemeral models with no downstream dependencies: ${orphans.join(", ")}`,
+        type: "orphan",
+        message: `Multiple leaf models with no downstream dependencies: ${orphans.join(", ")}`,
         models: orphans,
       });
     }
@@ -419,11 +344,6 @@ export class TMProject {
     client: MongoClient,
     dbName: string | undefined
   ): Promise<void> {
-    // Skip ephemeral models - they're inlined
-    if (model.isEphemeral()) {
-      return;
-    }
-
     // Build pipeline with output stage
     const pipeline = model.buildPipeline();
 
@@ -433,7 +353,7 @@ export class TMProject {
 
     // Handle view creation separately
     if (model.materialize.type === "view") {
-      const viewName = model.getOutputCollection()!;
+      const viewName = model.getOutputCollection();
       const viewDb = client.db(outputDb);
 
       // Drop existing view if exists
@@ -458,7 +378,7 @@ export class TMProject {
       "timeseries" in model.materialize &&
       model.materialize.timeseries
     ) {
-      const collName = model.getOutputCollection()!;
+      const collName = model.getOutputCollection();
       const db = client.db(outputDb);
 
       // Check if collection exists

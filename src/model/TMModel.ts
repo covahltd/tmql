@@ -3,14 +3,11 @@
  *
  * A model represents a named, materializable pipeline with typed input/output.
  * Models can depend on collections or other models, forming a DAG.
- *
- * @see docs/rfc-001-dag-pipeline-composition.md
  */
 
 import { TimeSeriesCollectionOptions } from "mongodb";
 import { Document } from "../utils/core";
 import { TMPipeline } from "../pipeline/TMPipeline";
-import { TMCollection } from "../collection/TMCollection";
 import {
   FieldSelector,
   FieldSelectorsThatInferTo,
@@ -44,7 +41,6 @@ export type TypedTimeSeriesOptions<TDoc extends Document> = Omit<
 
 /**
  * Type-safe $merge stage options.
- * MongoDB driver doesn't export typed $merge options.
  */
 type TopLevelFieldOf<T extends Document> = TopLevelField<FieldSelector<T>>;
 
@@ -69,10 +65,9 @@ export type CollectionMode<TOutput extends Document> =
 
 /**
  * Materialization configuration.
- * `alias` is optional - defaults to the model's `name` (dbt convention).
+ * `alias` is optional - defaults to the model's `name`.
  */
 export type MaterializeConfig<TOutput extends Document = Document> =
-  | { type: "ephemeral" }
   | { type: "view"; alias?: string; db?: string }
   | {
       type: "collection";
@@ -106,24 +101,19 @@ export type ModelConfig<
   pipeline: (
     p: TMPipeline<InferSourceType<TSource>, InferSourceType<TSource>, "model">
   ) => TMPipeline<InferSourceType<TSource>, TOutput, "model">;
-  materialize?: TMat;
+  /** Materialization configuration - required */
+  materialize: TMat;
 };
 
 // ============================================================================
 // Model Type Helpers
 // ============================================================================
 
-export type ModelName<T> =
-  T extends TMModel<infer N, any, any, any> ? N : never;
-export type ModelInput<T> =
-  T extends TMModel<any, infer I, any, any> ? I : never;
-export type ModelOutput<T> =
+/**
+ * Extract the output document type from a TMModel.
+ */
+export type InferModelOutput<T> =
   T extends TMModel<any, any, infer O, any> ? O : never;
-export type ModelMaterialize<T> =
-  T extends TMModel<any, any, any, infer M> ? M : never;
-
-export type IsEphemeral<T extends TMModel<any, any, any, any>> =
-  ModelMaterialize<T> extends { type: "ephemeral" } ? true : false;
 
 // ============================================================================
 // TMModel Class
@@ -137,14 +127,16 @@ export type IsEphemeral<T extends TMModel<any, any, any, any>> =
  *
  * @example
  * ```typescript
- * const stgEvents = new TMModel({
+ * const project = new TMProject({ name: "analytics" });
+ *
+ * const stgEvents = project.model({
  *   name: "stg_events",
  *   from: RawEventsCollection,
  *   pipeline: (p) => p.match({ _deleted: { $ne: true } }),
  *   materialize: { type: "collection", mode: "replace" },
  * });
  *
- * const dailyMetrics = new TMModel({
+ * const dailyMetrics = project.model({
  *   name: "daily_metrics",
  *   from: stgEvents, // DAG edge!
  *   pipeline: (p) => p.group({ _id: "$date", count: { $count: {} } }),
@@ -183,9 +175,7 @@ export class TMModel<
     this._pipelineFn = config.pipeline as (
       p: TMPipeline<TInput, TInput, "model">
     ) => TMPipeline<TInput, TOutput, "model">;
-    this.materialize = (config.materialize ?? {
-      type: "ephemeral",
-    }) as TMat;
+    this.materialize = config.materialize;
   }
 
   /**
@@ -219,53 +209,26 @@ export class TMModel<
 
   /**
    * Get the source collection name.
-   * - If source is a collection: returns its name
-   * - If source is a materialized model: returns the model's output collection
-   * - If source is an ephemeral model: throws (must inline instead)
    */
   getSourceCollectionName(): string {
-    if (this.isSourceModel()) {
-      const upstreamModel = this._from as TMModel<string, any, TInput, any>;
-      const outputCollection = upstreamModel.getOutputCollection();
-      if (!outputCollection) {
-        throw new Error(
-          `Model "${this.name}" depends on ephemeral model "${upstreamModel.name}". ` +
-            `Ephemeral models must be inlined, not referenced by collection name.`
-        );
-      }
-      return outputCollection;
-    }
-    return (this._from as TMCollection<TInput>).getCollectionName();
-  }
-
-  /**
-   * Check if this model is ephemeral (not materialized).
-   */
-  isEphemeral(): boolean {
-    return this.materialize.type === "ephemeral";
+    return this._from.getOutputCollectionName();
   }
 
   /**
    * Get the output collection name (where this model materializes).
-   * Returns undefined for ephemeral models.
    */
-  getOutputCollection(): string | undefined {
-    if (this.isEphemeral()) {
-      return undefined;
-    }
-
+  getOutputCollection(): string {
     // Use alias if provided, otherwise use model name
     if ("alias" in this.materialize && this.materialize.alias) {
       return this.materialize.alias;
     }
-
     return this.name;
   }
 
   /**
-   * ITMSource implementation - alias for getOutputCollection().
+   * TMSource implementation.
    */
-  getOutputCollectionName(): string | undefined {
+  getOutputCollectionName(): string {
     return this.getOutputCollection();
   }
 
@@ -273,9 +236,6 @@ export class TMModel<
    * Get the database name for output (if specified).
    */
   getOutputDatabase(): string | undefined {
-    if (this.isEphemeral()) {
-      return undefined;
-    }
     if ("db" in this.materialize) {
       return this.materialize.db;
     }
@@ -290,19 +250,6 @@ export class TMModel<
     const startPipeline = new TMPipeline<TInput, TInput, "model">({
       pipeline: [],
     });
-
-    // If source is an ephemeral model, prepend its stages
-    if (this.isSourceModel()) {
-      const upstreamModel = this._from as TMModel<string, any, TInput, any>;
-      if (upstreamModel.isEphemeral()) {
-        const upstreamStages = upstreamModel.getPipelineStages();
-        const withUpstream = new TMPipeline<TInput, TInput, "model">({
-          pipeline: upstreamStages,
-        });
-        const result = this._pipelineFn(withUpstream);
-        return result.getPipeline();
-      }
-    }
 
     // Execute pipeline function
     const result = this._pipelineFn(startPipeline);
@@ -328,11 +275,7 @@ export class TMModel<
    * Build the $out or $merge stage based on materialization config.
    */
   private buildOutputStage(): Document | null {
-    if (this.isEphemeral()) {
-      return null;
-    }
-
-    const outputCollection = this.getOutputCollection()!;
+    const outputCollection = this.getOutputCollection();
     const outputDb = this.getOutputDatabase();
 
     if (this.materialize.type === "view") {
@@ -390,52 +333,4 @@ export class TMModel<
 
     return null;
   }
-}
-
-/**
- * Type helper to infer the output type of a model.
- */
-export type InferModelOutput<T extends TMModel<any, any, any, any>> =
-  T extends TMModel<any, any, infer O, any> ? O : never;
-
-// ============================================================================
-// Factory Function (for enhanced type inference)
-// ============================================================================
-
-/**
- * Create a new TMModel with enhanced type inference.
- *
- * This factory function uses TypeScript 5.0+ `const` type parameters
- * to automatically infer literal types for `name` and preserve
- * the exact shape of the materialization config.
- *
- * @example
- * ```typescript
- * // Type inference automatically captures literal "stg_events"
- * const stgEvents = createModel({
- *   name: "stg_events",
- *   from: RawEventsCollection,
- *   pipeline: (p) => p.match({ _deleted: { $ne: true } }),
- *   materialize: { type: "collection", mode: "replace" },
- * });
- *
- * // stgEvents.name is typed as "stg_events", not string
- * ```
- */
-export function createModel<
-  const TName extends string,
-  const TFrom extends TMSource<any>,
-  TOutput extends Document,
-  const TMat extends MaterializeConfig<TOutput> = { type: "ephemeral" },
->(
-  config: ModelConfig<TName, TFrom, TOutput, TMat>
-): TMModel<TName, InferSourceType<TFrom>, TOutput, TMat> {
-  return new TMModel(
-    config as ModelConfig<
-      TName,
-      TMSource<InferSourceType<TFrom>>,
-      TOutput,
-      TMat
-    >
-  );
 }

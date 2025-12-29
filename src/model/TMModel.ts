@@ -88,7 +88,7 @@ export type ModelConfig<
   TName extends string,
   TSource extends TMSource<Document>,
   TOutput extends Document,
-  TMat extends MaterializeConfig<TOutput>,
+  TMaterializeConfig extends MaterializeConfig<TOutput>,
 > = {
   name: TName;
   /** Source collection or upstream model */
@@ -98,7 +98,7 @@ export type ModelConfig<
     p: TMPipeline<InferSourceType<TSource>, InferSourceType<TSource>, "model">
   ) => TMPipeline<InferSourceType<TSource>, TOutput, "model">;
   /** Materialization configuration - required */
-  materialize: TMat;
+  materialize: TMaterializeConfig;
 };
 
 // ============================================================================
@@ -119,7 +119,8 @@ export class TMModel<
   TName extends string = string,
   TInput extends Document = Document,
   TOutput extends Document = Document,
-  TMat extends MaterializeConfig<TOutput> = MaterializeConfig<TOutput>,
+  TMaterializeConfig extends
+    MaterializeConfig<TOutput> = MaterializeConfig<TOutput>,
 > implements TMSource<TOutput>
 {
   /** Preset modes for common materialization patterns */
@@ -143,7 +144,7 @@ export class TMModel<
   readonly sourceType = "model" as const;
 
   readonly name: TName;
-  readonly materialize: TMat;
+  readonly materialize: TMaterializeConfig;
 
   // Phantom types for inference (not used at runtime)
   readonly __inputType!: TInput;
@@ -154,7 +155,9 @@ export class TMModel<
     p: TMPipeline<TInput, TInput, "model">
   ) => TMPipeline<TInput, TOutput, "model">;
 
-  constructor(config: ModelConfig<TName, TMSource<TInput>, TOutput, TMat>) {
+  constructor(
+    config: ModelConfig<TName, TMSource<TInput>, TOutput, TMaterializeConfig>
+  ) {
     this.name = config.name;
     this._from = config.from as TMSource<TInput>;
     this._pipelineFn = config.pipeline as (
@@ -173,7 +176,12 @@ export class TMModel<
   /**
    * Type predicate to check if the source is a model (vs a collection).
    */
-  isSourceModel(): this is TMModel<TName, TInput, TOutput, TMat> & {
+  isSourceModel(): this is TMModel<
+    TName,
+    TInput,
+    TOutput,
+    TMaterializeConfig
+  > & {
     getSource(): TMModel<string, any, TInput, any>;
   } {
     return this._from.sourceType === "model";

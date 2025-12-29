@@ -10,3 +10,6 @@ pre-commit:
     format:
       run: bun run format:fix
       stage_fixed: true
+    test:
+      run: bun run test:ci
+      stage_fixed: true

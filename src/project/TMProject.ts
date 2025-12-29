@@ -131,7 +131,7 @@ export class TMProject {
   /**
    * Get a model by name.
    */
-  get<TName extends string>(
+  getModel<TName extends string>(
     name: TName
   ): TMModel<TName, any, any, any> | undefined {
     return this.models.get(name) as TMModel<TName, any, any, any> | undefined;

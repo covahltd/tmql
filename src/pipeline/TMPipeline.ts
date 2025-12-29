@@ -138,9 +138,6 @@ export class TMPipeline<
     >([{ $unset }]);
   }
 
-  // Lookup with function-only pipeline for automatic type inference
-  // In "runtime" mode: only TMCollection allowed
-  // In "model" mode: TMCollection OR TMModel allowed
   lookup<
     C extends AllowedSource<Mode, any>,
     LocalField extends FieldPath<StartingDocs>,
@@ -249,9 +246,6 @@ export class TMPipeline<
     >([{ $replaceRoot }]);
   }
 
-  // UnionWith
-  // In "runtime" mode: only TMCollection allowed
-  // In "model" mode: TMCollection OR TMModel allowed
   unionWith<
     C extends AllowedSource<Mode, any>,
     PipelineOutput extends Document = InferSourceType<C>,

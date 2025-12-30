@@ -3,45 +3,6 @@ import { useMemoryMongo } from "../utils/useMemoryMongo";
 import { TMCollection } from "../collection/TMCollection";
 import { TMModel } from "../model/TMModel";
 import { TMProject } from "./TMProject";
-import { Document } from "../utils/core";
-
-// ============================================================================
-// Schema Validation Helpers
-// ============================================================================
-
-type TypeCheck = (value: unknown) => boolean;
-
-/**
- * Validates that every document in the array matches the expected schema.
- * Checks for exact keys (no missing, no extra) and correct runtime types.
- */
-function assertDocumentsMatchSchema(
-  docs: Document[],
-  schema: Record<string, TypeCheck>
-) {
-  const expectedKeys = Object.keys(schema).sort();
-
-  for (const doc of docs) {
-    // Verify exact keys - no more, no less
-    expect(Object.keys(doc).sort()).toEqual(expectedKeys);
-
-    // Verify each field's type
-    for (const [key, typeCheck] of Object.entries(schema)) {
-      expect(
-        typeCheck(doc[key]),
-        `Field "${key}" failed type check. Value: ${JSON.stringify(doc[key])}`
-      ).toBe(true);
-    }
-  }
-}
-
-// Type check helpers
-const isString = (v: unknown): boolean => typeof v === "string";
-const isNumber = (v: unknown): boolean => typeof v === "number";
-const isBoolean = (v: unknown): boolean => typeof v === "boolean";
-const isNull = (v: unknown): boolean => v === null;
-const isArray = (v: unknown): boolean => Array.isArray(v);
-
 // ============================================================================
 // Simple DAG Test Data
 // ============================================================================
@@ -357,7 +318,7 @@ describe("TMProject.run()", async () => {
   });
 
   describe("output schema validation", () => {
-    it("stagingModel output has exact expected schema", async () => {
+    it("stagingModel output matches exact expected documents", async () => {
       const db = client.db();
       await db.collection<RawDoc>("raw_docs").insertMany(sampleDocs);
 
@@ -366,17 +327,21 @@ describe("TMProject.run()", async () => {
         databaseName: db.databaseName,
       });
 
-      const stagingDocs = await db.collection("staging").find().toArray();
+      const stagingDocs = await db
+        .collection("staging")
+        .find()
+        .sort({ _id: 1 })
+        .toArray();
 
-      // Verify every document matches expected schema
-      assertDocumentsMatchSchema(stagingDocs, {
-        _id: isString,
-        value: isNumber,
-        active: isBoolean,
-      });
+      // Verify exact output - only active docs pass through
+      expect(stagingDocs).toHaveLength(2);
+      expect(stagingDocs).toEqual([
+        { _id: "1", value: 10, active: true },
+        { _id: "2", value: 20, active: true },
+      ]);
     });
 
-    it("aggregateModel output has exact expected schema", async () => {
+    it("aggregateModel output matches exact expected documents", async () => {
       const db = client.db();
       await db.collection<RawDoc>("raw_docs").insertMany(sampleDocs);
 
@@ -387,15 +352,12 @@ describe("TMProject.run()", async () => {
 
       const aggregateDocs = await db.collection("aggregate").find().toArray();
 
-      // Verify every document matches expected schema
-      assertDocumentsMatchSchema(aggregateDocs, {
-        _id: isNull,
-        total: isNumber,
-        count: isNumber,
-      });
+      // Verify exact output - sum of 10 + 20 = 30, count = 2
+      expect(aggregateDocs).toHaveLength(1);
+      expect(aggregateDocs).toEqual([{ _id: null, total: 30, count: 2 }]);
     });
 
-    it("enrichedOrders output has exact expected schema", async () => {
+    it("enrichedOrders output matches exact expected documents", async () => {
       const db = client.db();
       await db.collection<Order>("orders").insertMany(sampleOrders);
       await db.collection<User>("users").insertMany(sampleUsers);
@@ -408,18 +370,34 @@ describe("TMProject.run()", async () => {
       const enrichedDocs = await db
         .collection("enriched_orders")
         .find()
+        .sort({ _id: 1 })
         .toArray();
 
-      // Verify every document matches expected schema
-      assertDocumentsMatchSchema(enrichedDocs, {
-        _id: isString,
-        userId: isString,
-        amount: isNumber,
-        user: isArray,
-      });
+      // Verify exact output - orders with user lookup (user has nested groups from chained lookup)
+      expect(enrichedDocs).toHaveLength(3);
+      expect(enrichedDocs).toEqual([
+        {
+          _id: "order_1",
+          userId: "user_1",
+          amount: 100,
+          user: [{ _id: "user_1", name: "Alice", tier: "gold", groups: [] }],
+        },
+        {
+          _id: "order_2",
+          userId: "user_1",
+          amount: 200,
+          user: [{ _id: "user_1", name: "Alice", tier: "gold", groups: [] }],
+        },
+        {
+          _id: "order_3",
+          userId: "user_2",
+          amount: 150,
+          user: [{ _id: "user_2", name: "Bob", tier: "silver", groups: [] }],
+        },
+      ]);
     });
 
-    it("orderSummary output has exact expected schema", async () => {
+    it("orderSummary output matches exact expected documents", async () => {
       const db = client.db();
       await db.collection<Order>("orders").insertMany(sampleOrders);
       await db.collection<User>("users").insertMany(sampleUsers);
@@ -431,12 +409,11 @@ describe("TMProject.run()", async () => {
 
       const summaryDocs = await db.collection("order_summary").find().toArray();
 
-      // Verify every document matches expected schema
-      assertDocumentsMatchSchema(summaryDocs, {
-        _id: isNull,
-        totalOrders: isNumber,
-        totalAmount: isNumber,
-      });
+      // Verify exact output - 3 orders totaling 100 + 200 + 150 = 450
+      expect(summaryDocs).toHaveLength(1);
+      expect(summaryDocs).toEqual([
+        { _id: null, totalOrders: 3, totalAmount: 450 },
+      ]);
     });
   });
 });

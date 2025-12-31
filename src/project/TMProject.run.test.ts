@@ -3,7 +3,6 @@ import { useMemoryMongo } from "../utils/useMemoryMongo";
 import { TMCollection } from "../collection/TMCollection";
 import { TMModel } from "../model/TMModel";
 import { TMProject } from "./TMProject";
-
 // ============================================================================
 // Simple DAG Test Data
 // ============================================================================
@@ -315,6 +314,106 @@ describe("TMProject.run()", async () => {
       expect(result.success).toBe(true);
       expect(result.modelsRun).toContain("staging");
       expect(result.modelsRun).not.toContain("aggregate");
+    });
+  });
+
+  describe("output schema validation", () => {
+    it("stagingModel output matches exact expected documents", async () => {
+      const db = client.db();
+      await db.collection<RawDoc>("raw_docs").insertMany(sampleDocs);
+
+      await simpleProject.run({
+        client,
+        databaseName: db.databaseName,
+      });
+
+      const stagingDocs = await db
+        .collection("staging")
+        .find()
+        .sort({ _id: 1 })
+        .toArray();
+
+      // Verify exact output - only active docs pass through
+      expect(stagingDocs).toHaveLength(2);
+      expect(stagingDocs).toEqual([
+        { _id: "1", value: 10, active: true },
+        { _id: "2", value: 20, active: true },
+      ]);
+    });
+
+    it("aggregateModel output matches exact expected documents", async () => {
+      const db = client.db();
+      await db.collection<RawDoc>("raw_docs").insertMany(sampleDocs);
+
+      await simpleProject.run({
+        client,
+        databaseName: db.databaseName,
+      });
+
+      const aggregateDocs = await db.collection("aggregate").find().toArray();
+
+      // Verify exact output - sum of 10 + 20 = 30, count = 2
+      expect(aggregateDocs).toHaveLength(1);
+      expect(aggregateDocs).toEqual([{ _id: null, total: 30, count: 2 }]);
+    });
+
+    it("enrichedOrders output matches exact expected documents", async () => {
+      const db = client.db();
+      await db.collection<Order>("orders").insertMany(sampleOrders);
+      await db.collection<User>("users").insertMany(sampleUsers);
+
+      await complexProject.run({
+        client,
+        databaseName: db.databaseName,
+      });
+
+      const enrichedDocs = await db
+        .collection("enriched_orders")
+        .find()
+        .sort({ _id: 1 })
+        .toArray();
+
+      // Verify exact output - orders with user lookup (user has nested groups from chained lookup)
+      expect(enrichedDocs).toHaveLength(3);
+      expect(enrichedDocs).toEqual([
+        {
+          _id: "order_1",
+          userId: "user_1",
+          amount: 100,
+          user: [{ _id: "user_1", name: "Alice", tier: "gold", groups: [] }],
+        },
+        {
+          _id: "order_2",
+          userId: "user_1",
+          amount: 200,
+          user: [{ _id: "user_1", name: "Alice", tier: "gold", groups: [] }],
+        },
+        {
+          _id: "order_3",
+          userId: "user_2",
+          amount: 150,
+          user: [{ _id: "user_2", name: "Bob", tier: "silver", groups: [] }],
+        },
+      ]);
+    });
+
+    it("orderSummary output matches exact expected documents", async () => {
+      const db = client.db();
+      await db.collection<Order>("orders").insertMany(sampleOrders);
+      await db.collection<User>("users").insertMany(sampleUsers);
+
+      await complexProject.run({
+        client,
+        databaseName: db.databaseName,
+      });
+
+      const summaryDocs = await db.collection("order_summary").find().toArray();
+
+      // Verify exact output - 3 orders totaling 100 + 200 + 150 = 450
+      expect(summaryDocs).toHaveLength(1);
+      expect(summaryDocs).toEqual([
+        { _id: null, totalOrders: 3, totalAmount: 450 },
+      ]);
     });
   });
 });

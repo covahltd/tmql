@@ -1,26 +1,11 @@
 import { Document, Prettify, WithoutDollar } from "../utils/core";
 import { FieldReferencesThatInferTo } from "../elements/fieldReference";
 
-// ============================================================================
-// $unwind Stage Types
-// ============================================================================
-
-/**
- * Field reference that points to an array field
- * Only allows $-prefixed paths that resolve to array types
- */
 export type UnwindPath<Schema extends Document> = FieldReferencesThatInferTo<
   Schema,
   unknown[]
 >;
 
-/**
- * $unwind stage options (extended form)
- *
- * @property path - The array field to unwind (e.g., "$items")
- * @property includeArrayIndex - Optional field name to store the array index
- * @property preserveNullAndEmptyArrays - If true, output documents for null/empty arrays
- */
 export type UnwindOptions<
   Schema extends Document,
   IndexField extends string = never,
@@ -30,29 +15,10 @@ export type UnwindOptions<
   preserveNullAndEmptyArrays?: boolean;
 };
 
-/**
- * $unwind stage query type
- *
- * Supports:
- * - Simple form: "$arrayField"
- * - Extended form: { path: "$arrayField", includeArrayIndex: "idx", preserveNullAndEmptyArrays: true }
- *
- * @example
- * // Simple unwind
- * .unwind("$items")
- *
- * @example
- * // With options
- * .unwind({ path: "$items", includeArrayIndex: "itemIndex", preserveNullAndEmptyArrays: true })
- */
 export type UnwindQuery<
   Schema extends Document,
   IndexField extends string = never,
 > = UnwindPath<Schema> | UnwindOptions<Schema, IndexField>;
-
-// ============================================================================
-// Output Type Resolution
-// ============================================================================
 
 /**
  * Transform an array type to its element type

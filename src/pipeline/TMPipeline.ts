@@ -227,22 +227,9 @@ export class TMPipeline<
     ]);
   }
 
-  // ============================================================================
-  // Ordering & Pagination Stages
-  // ============================================================================
-
   /**
-   * $sort stage - sort documents by field values
-   *
-   * @param $sort - Sort specification: { field: 1 } for ascending, { field: -1 } for descending
-   * @returns Pipeline with documents sorted by specified fields
-   *
-   * @example
-   * .sort({ createdAt: -1, name: 1 })
-   *
-   * @example
-   * // Sort by nested field
-   * .sort({ "user.lastName": 1 })
+   * Sort documents by field values (ascending 1 or descending -1)
+   * @example .sort({ createdAt: -1, name: 1 })
    */
   sort<const S extends SortQuery<PreviousStageDocs>>(
     $sort: S
@@ -251,56 +238,24 @@ export class TMPipeline<
   }
 
   /**
-   * $limit stage - limit the number of documents
-   *
-   * @param count - Maximum number of documents to pass through
-   * @returns Pipeline with at most `count` documents
-   *
-   * @example
-   * .sort({ score: -1 }).limit(10) // Top 10 by score
+   * Limit the number of documents in the pipeline
+   * @example .limit(10)
    */
   limit(count: number): TMPipeline<StartingDocs, PreviousStageDocs, Mode> {
     return this._chain<PreviousStageDocs>([{ $limit: count }]);
   }
 
   /**
-   * $skip stage - skip a number of documents
-   *
-   * @param count - Number of documents to skip
-   * @returns Pipeline with first `count` documents removed
-   *
-   * @example
-   * .sort({ createdAt: -1 }).skip(20).limit(10) // Page 3 of 10 items
+   * Skip a number of documents
+   * @example .skip(20).limit(10)
    */
   skip(count: number): TMPipeline<StartingDocs, PreviousStageDocs, Mode> {
     return this._chain<PreviousStageDocs>([{ $skip: count }]);
   }
 
-  // ============================================================================
-  // Array Transformation Stages
-  // ============================================================================
-
   /**
-   * $unwind stage - deconstruct an array field into multiple documents
-   *
-   * Converts each document with an array field into multiple documents,
-   * one for each element in the array. The array field becomes a scalar.
-   *
-   * @param $unwind - Array field path ("$field") or options object
-   * @returns Pipeline with array field flattened to scalar
-   *
-   * @example
-   * // Simple unwind
-   * .unwind("$items")
-   * // { items: [a, b, c] } becomes 3 documents with items: a, items: b, items: c
-   *
-   * @example
-   * // With options
-   * .unwind({
-   *   path: "$items",
-   *   includeArrayIndex: "itemIndex",
-   *   preserveNullAndEmptyArrays: true
-   * })
+   * Deconstruct an array field into multiple documents (T[] → T)
+   * @example .unwind("$items") or .unwind({ path: "$items", includeArrayIndex: "idx" })
    */
   unwind<
     Path extends FieldReferencesThatInferTo<PreviousStageDocs, unknown[]>,

@@ -1,26 +1,6 @@
 import { Assert, Equal } from "../utils/tests";
 import { SortQuery, ResolveSortOutput } from "./sort";
 
-/**
- * Type Resolution Behaviors for $sort Stage:
- *
- * FEATURES:
- * 1. SORT DIRECTION:
- *    Supports 1 (ascending) and -1 (descending) for any field.
- *
- * 2. NESTED FIELD SORTING:
- *    Supports dot notation for nested fields.
- *    Example: { "user.name": 1 } sorts by nested user.name field
- *
- * 3. TEXT SCORE SORTING:
- *    Supports { $meta: "textScore" } for text search result scoring.
- *
- * 4. OUTPUT PRESERVATION:
- *    $sort does not transform documents - output type equals input type.
- *
- * These tests use Assert<Equal> which checks structural compatibility.
- */
-
 // ============================================================================
 // Basic Sort Queries
 // ============================================================================

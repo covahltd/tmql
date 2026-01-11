@@ -5,25 +5,6 @@ import {
   ExtractIndexField,
 } from "./unwind";
 
-/**
- * Type Resolution Behaviors for $unwind Stage:
- *
- * FEATURES:
- * 1. ARRAY FIELD FLATTENING:
- *    The $unwind stage converts an array field to its element type.
- *    Example: { items: Item[] } becomes { items: Item }
- *
- * 2. INDEX FIELD INSERTION:
- *    When includeArrayIndex is specified, adds a number field.
- *    Example: { items: Item[], idx: number }
- *
- * 3. NESTED ARRAY HANDLING:
- *    Nested arrays unwind one level at a time.
- *    Example: { matrix: number[][] } becomes { matrix: number[] }
- *
- * These tests use Assert<Equal> which checks structural compatibility.
- */
-
 // ============================================================================
 // Basic Unwind
 // ============================================================================

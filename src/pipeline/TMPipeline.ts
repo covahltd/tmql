@@ -1,11 +1,12 @@
 import { tmql } from "../singleton/tmql";
-import { Document } from "../utils/core";
+import { Document, WithoutDollar } from "../utils/core";
 import { MatchQuery, ResolveMatchOutput } from "../stages/match";
 import { ResolveSetOutput, SetQuery } from "../stages/set";
 import { ResolveUnsetOutput, UnsetQuery } from "../stages/unset";
 import {
   FieldPath,
   FieldPathsThatInferToForLookup,
+  FieldReferencesThatInferTo,
 } from "../elements/fieldReference";
 import { TMCollection } from "../collection/TMCollection";
 import { ResolveLookupOutput } from "../stages/lookup";
@@ -17,6 +18,8 @@ import {
   ResolveReplaceRootOutput,
 } from "../stages/replaceRoot";
 import { ResolveUnionWithOutput } from "../stages/unionWith";
+import { SortQuery } from "../stages/sort";
+import { ResolveUnwindOutput } from "../stages/unwind";
 import { AggregationCursor, MongoClient } from "mongodb";
 import { type TMSource, type InferSourceType } from "../source/TMSource";
 
@@ -222,6 +225,57 @@ export class TMPipeline<
     return this._chain<ResolveReplaceRootOutput<R, PreviousStageDocs>>([
       { $replaceRoot },
     ]);
+  }
+
+  /**
+   * Sort documents by field values (ascending 1 or descending -1)
+   * @example .sort({ createdAt: -1, name: 1 })
+   */
+  sort<const S extends SortQuery<PreviousStageDocs>>(
+    $sort: S
+  ): TMPipeline<StartingDocs, PreviousStageDocs, Mode> {
+    return this._chain<PreviousStageDocs>([{ $sort }]);
+  }
+
+  /**
+   * Limit the number of documents in the pipeline
+   * @example .limit(10)
+   */
+  limit(count: number): TMPipeline<StartingDocs, PreviousStageDocs, Mode> {
+    return this._chain<PreviousStageDocs>([{ $limit: count }]);
+  }
+
+  /**
+   * Skip a number of documents
+   * @example .skip(20).limit(10)
+   */
+  skip(count: number): TMPipeline<StartingDocs, PreviousStageDocs, Mode> {
+    return this._chain<PreviousStageDocs>([{ $skip: count }]);
+  }
+
+  /**
+   * Deconstruct an array field into multiple documents (T[] → T)
+   * @example .unwind("$items") or .unwind({ path: "$items", includeArrayIndex: "idx" })
+   */
+  unwind<
+    Path extends FieldReferencesThatInferTo<PreviousStageDocs, unknown[]>,
+    IndexField extends string = never,
+  >(
+    $unwind:
+      | Path
+      | {
+          path: Path;
+          includeArrayIndex?: IndexField;
+          preserveNullAndEmptyArrays?: boolean;
+        }
+  ): TMPipeline<
+    StartingDocs,
+    ResolveUnwindOutput<PreviousStageDocs, WithoutDollar<Path>, IndexField>,
+    Mode
+  > {
+    return this._chain<
+      ResolveUnwindOutput<PreviousStageDocs, WithoutDollar<Path>, IndexField>
+    >([{ $unwind }]);
   }
 
   unionWith<

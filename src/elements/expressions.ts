@@ -179,6 +179,53 @@ export type FilterExpression<Schema extends Document> = {
 };
 
 /**
+ * Array-producing expressions that can be used as input to $map, $filter, etc.
+ * Excludes $map and $sum to avoid circular references.
+ */
+export type ArrayProducingExpression<Schema extends Document> =
+  | ConcatArraysExpression<Schema>
+  | ArrayElemAtExpression<Schema>
+  | FilterExpression<Schema>;
+
+/**
+ * Valid inputs for array operations: field references, literals, or expressions
+ */
+export type ArrayInput<Schema extends Document> =
+  | FieldReferencesThatInferTo<Schema, unknown[]>
+  | ArrayProducingExpression<Schema>
+  | unknown[];
+
+/**
+ * $map expression - transforms each element of an array
+ * Syntax: { $map: { input: <array>, as: <string>, in: <expression> } }
+ * Returns: Array of transformed elements
+ * Note: The `in` expression type inference requires $$variable tracking,
+ * so we return unknown[] for now. $sum wrapping will still infer number.
+ */
+export type MapExpression<Schema extends Document> = {
+  $map: {
+    input: ArrayInput<Schema>;
+    as: string;
+    in: unknown; // Expression using $$var references
+  };
+};
+
+/**
+ * $sum expression - sums numeric values in an array
+ * Syntax: { $sum: <array-expression> } or { $sum: <field-reference> }
+ * In $set context: operates on array expressions
+ * In $group context: accumulates values (handled separately)
+ * Returns: number
+ */
+export type SumExpression<Schema extends Document> = {
+  $sum:
+    | FieldReferencesThatInferTo<Schema, number[]>
+    | ArrayProducingExpression<Schema>
+    | MapExpression<Schema>
+    | number[];
+};
+
+/**
  * Union of all array expressions
  * Extend this as we add more array operators
  */
@@ -186,7 +233,9 @@ export type ArrayExpression<Schema extends Document> =
   | ConcatArraysExpression<Schema>
   | SizeExpression<Schema>
   | ArrayElemAtExpression<Schema>
-  | FilterExpression<Schema>;
+  | FilterExpression<Schema>
+  | MapExpression<Schema>
+  | SumExpression<Schema>;
 
 /**
  * Arithmetic expression operands - numbers, field references to numbers, or nested expressions
@@ -371,6 +420,20 @@ export type VariableExpression<_Schema extends Document> =
   LetExpression<_Schema>;
 
 // ============================================================================
+// Literal Expression Operators
+// ============================================================================
+
+/**
+ * $literal expression - returns a value without parsing
+ * Syntax: { $literal: <value> }
+ * Used to pass literal values that might otherwise be interpreted as operators
+ * Returns: The exact type of the value
+ */
+export type LiteralExpression<_Schema extends Document> = {
+  $literal: unknown;
+};
+
+// ============================================================================
 // Comparison Expression Operators (return boolean)
 // ============================================================================
 
@@ -476,6 +539,7 @@ export type Expression<Schema extends Document> =
   | StringExpression<Schema>
   | ConditionalExpression<Schema>
   | VariableExpression<Schema>
+  | LiteralExpression<Schema>
   | ComparisonExpression<Schema>;
 
 /**
@@ -519,6 +583,8 @@ type InferArrayElementType<Schema extends Document, ArraySource> =
  * For $size: always returns number
  * For $arrayElemAt: returns the array element type
  * For $filter: returns array of the input element type
+ * For $map: returns unknown[] (in expression uses $$vars we can't track)
+ * For $sum: returns number (sum of array elements)
  */
 export type InferArrayExpression<Schema extends Document, Expr> =
   Expr extends (
@@ -534,6 +600,8 @@ export type InferArrayExpression<Schema extends Document, Expr> =
     InferArrayElementType<Schema, ArraySource>
   : Expr extends { $filter: { input: infer ArraySource } } ?
     InferArrayElementType<Schema, ArraySource>[]
+  : Expr extends { $map: unknown } ? unknown[]
+  : Expr extends { $sum: unknown } ? number
   : never;
 
 /**
@@ -699,12 +767,14 @@ export type InferExpression<Schema extends Document, Expr> =
     | { $mod: unknown }
   ) ?
     InferArithmeticExpression<Schema, Expr>
-  : // Array expressions (including $arrayElemAt, $filter)
+  : // Array expressions (including $arrayElemAt, $filter, $map, $sum)
   Expr extends (
     | { $concatArrays: unknown }
     | { $size: unknown }
     | { $arrayElemAt: unknown }
     | { $filter: unknown }
+    | { $map: unknown }
+    | { $sum: unknown }
   ) ?
     InferArrayExpression<Schema, Expr>
   : // String expressions
@@ -714,6 +784,8 @@ export type InferExpression<Schema extends Document, Expr> =
     InferConditionalExpression<Schema, Expr>
   : // Variable binding expressions (return unknown)
   Expr extends { $let: unknown } ? unknown
+  : // Literal expressions (return the literal type)
+  Expr extends { $literal: infer Value } ? Value
   : // Comparison expressions (all return boolean)
   Expr extends (
     | { $in: unknown }

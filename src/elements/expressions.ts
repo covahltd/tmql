@@ -619,12 +619,11 @@ type InferExpressionType<_Schema extends Document, Expr> =
   : never;
 
 /**
- * Helper to infer a single conditional operand type
- * Handles field references, array literals, conditional expressions, regular expressions, and literals
+ * Helper to infer operand type for $ifNull (filters out null - $ifNull never returns null literals)
  */
-type InferSingleOperand<Schema extends Document, Operand> =
+type InferIfNullOperand<Schema extends Document, Operand> =
   Operand extends null ?
-    never // null values are filtered out in unions
+    never // $ifNull skips null literals, they're never returned
   : Operand extends FieldReference<Schema> ?
     NonNullable<InferFieldReference<Schema, Operand>>
   : Operand extends (infer T)[] ?
@@ -636,26 +635,45 @@ type InferSingleOperand<Schema extends Document, Operand> =
   : InferExpressionType<Schema, Operand>; // Is an expression
 
 /**
- * Helper to infer the union of all operand types in an array
- * Recursively processes each operand and unions their types
+ * Helper to infer operand type for $cond (includes null - either branch can be returned)
  */
-type UnionOperandTypes<Schema extends Document, Operands extends unknown[]> =
+type InferCondOperand<Schema extends Document, Operand> =
+  Operand extends null ?
+    null // $cond CAN return null if it's in a branch
+  : Operand extends FieldReference<Schema> ?
+    NonNullable<InferFieldReference<Schema, Operand>>
+  : Operand extends (infer T)[] ?
+    T // Array literal
+  : Operand extends { $ifNull: unknown } | { $cond: unknown } ?
+    InferConditionalExpression<Schema, Operand> // Conditional expressions
+  : InferExpressionType<Schema, Operand> extends never ?
+    NonNullable<Operand> // Not an expression, treat as literal
+  : InferExpressionType<Schema, Operand>; // Is an expression
+
+/**
+ * Helper to infer the union of all operand types in $ifNull
+ * Recursively processes each operand and unions their types (filtering nulls)
+ */
+type UnionIfNullOperandTypes<
+  Schema extends Document,
+  Operands extends unknown[],
+> =
   Operands extends [infer First, ...infer Rest] ?
-    InferSingleOperand<Schema, First> | UnionOperandTypes<Schema, Rest>
+    InferIfNullOperand<Schema, First> | UnionIfNullOperandTypes<Schema, Rest>
   : never;
 
 /**
  * Infer the result type of a conditional expression
- * - $ifNull: returns the union of all operand types (n arguments)
- * - $cond: returns the union of the true and false value types
+ * - $ifNull: returns the union of all operand types (filtering null literals)
+ * - $cond: returns the union of the true and false value types (including null)
  */
 export type InferConditionalExpression<Schema extends Document, Expr> =
   Expr extends { $ifNull: infer Operands } ?
     Operands extends unknown[] ?
-      UnionOperandTypes<Schema, Operands>
+      UnionIfNullOperandTypes<Schema, Operands>
     : never
   : Expr extends { $cond: [unknown, infer TrueVal, infer FalseVal] } ?
-    InferSingleOperand<Schema, TrueVal> | InferSingleOperand<Schema, FalseVal>
+    InferCondOperand<Schema, TrueVal> | InferCondOperand<Schema, FalseVal>
   : never;
 
 /**

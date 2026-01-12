@@ -152,6 +152,84 @@ type AddNewFieldExpected = {
 
 type AddNewFieldTest = Assert<Equal<AddNewFieldResult, AddNewFieldExpected>>;
 
+// Test 4b: Using $arrayElemAt preserves optional properties in array elements
+// When extracting an element from an array, the element's optional properties should be preserved
+// This tests the fix in MergeSetValue that returns UpdateValue directly when BaseValue is never
+type ArrayElemAtOptionalSchema = {
+  _id: string;
+  items: { name: string; quantity?: number; metadata?: { tags: string[] } }[];
+};
+
+type ArrayElemAtOptionalSet = {
+  first_item: { $arrayElemAt: ["$items", 0] };
+};
+
+type ArrayElemAtOptionalResult = ResolveSetOutput<
+  ArrayElemAtOptionalSet,
+  ArrayElemAtOptionalSchema
+>;
+
+type ArrayElemAtOptionalExpected = {
+  _id: string;
+  items: { name: string; quantity?: number; metadata?: { tags: string[] } }[];
+  first_item: {
+    name: string;
+    quantity?: number;
+    metadata?: { tags: string[] };
+  };
+};
+
+type ArrayElemAtOptionalTest = Assert<
+  Equal<ArrayElemAtOptionalResult, ArrayElemAtOptionalExpected>
+>;
+
+// Test 4c: Verify nested optional properties are preserved through $arrayElemAt
+// Ensures the fix works for deeply nested optional properties
+type ArrayElemAtNestedOptionalSchema = {
+  _id: string;
+  orders: {
+    orderId: string;
+    customer?: {
+      name: string;
+      email?: string;
+      preferences?: { theme?: string };
+    };
+  }[];
+};
+
+type ArrayElemAtNestedOptionalSet = {
+  latest_order: { $arrayElemAt: ["$orders", -1] };
+};
+
+type ArrayElemAtNestedOptionalResult = ResolveSetOutput<
+  ArrayElemAtNestedOptionalSet,
+  ArrayElemAtNestedOptionalSchema
+>;
+
+type ArrayElemAtNestedOptionalExpected = {
+  _id: string;
+  orders: {
+    orderId: string;
+    customer?: {
+      name: string;
+      email?: string;
+      preferences?: { theme?: string };
+    };
+  }[];
+  latest_order: {
+    orderId: string;
+    customer?: {
+      name: string;
+      email?: string;
+      preferences?: { theme?: string };
+    };
+  };
+};
+
+type ArrayElemAtNestedOptionalTest = Assert<
+  Equal<ArrayElemAtNestedOptionalResult, ArrayElemAtNestedOptionalExpected>
+>;
+
 // Test 5: Using $concatArrays transformation expression
 // Feature: Literal array element types are preserved
 type ArrayConcatSchema = {
@@ -1015,6 +1093,8 @@ export type {
   NestedPreserveExistingTest,
   NestedFullPreserveExistingTest,
   AddNewFieldTest,
+  ArrayElemAtOptionalTest,
+  ArrayElemAtNestedOptionalTest,
   ArrayConcatTest,
   SizeExpressionTest,
   SizeLiteralTest,

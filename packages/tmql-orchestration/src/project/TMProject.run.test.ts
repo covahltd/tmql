@@ -3,8 +3,8 @@ import { TMCollection } from "tmql";
 import { TMModel } from "../model/TMModel";
 import { TMProject } from "./TMProject";
 
-// Re-use the utility from the root (tests will run from root)
-import { useMemoryMongo } from "../../../../src/utils/useMemoryMongo";
+// Shared test utility from tmql package
+import { useMemoryMongo } from "../../../tmql/src/utils/useMemoryMongo";
 // ============================================================================
 // Simple DAG Test Data
 // ============================================================================

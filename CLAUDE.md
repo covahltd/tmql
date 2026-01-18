@@ -27,7 +27,6 @@ tmql/
 │       │   └── project/         # TMProject - DAG orchestrator
 │       └── LICENSE              # Elastic License 2.0
 │
-├── src/                         # Legacy re-exports (for backwards compatibility)
 ├── examples/                    # Example usage
 └── package.json                 # Root workspace config (private)
 ```
@@ -142,9 +141,9 @@ TODO: Document the rest of the stages
 
 - Use `bun` as the package manager (specified in package.json)
 - TypeScript strict mode is enabled
-- Modular architecture: type utilities separated into `src/elements/` for reusability
+- Modular architecture: type utilities separated into `packages/tmql/src/elements/` for reusability
 - Examples in `examples/*.ts` demonstrate example pipeline use cases
-- Assertions in `src/*/*.typeAssertions.ts` are used as tests for type functionality
+- Assertions in `packages/tmql/src/*/*.typeAssertions.ts` are used as tests for type functionality
 - The `custom()` method allows escape hatches for unsupported aggregation stages while maintaining type flow
 
 ## Type Inspection Tools & Debugging
@@ -183,15 +182,15 @@ The `.claude/inspect-types.ts` file is a CLI tool that:
 
 For the TMPipeline's complex generics (`StartingDocs`, `PreviousStageDocs`):
 
-1. **Check type narrowing**: Focus on `ResolveMatchOutput` and `FilterUnion` in `src/stages/match.ts`
-2. **Check field resolution**: Verify `GetFieldType` and `InferFieldSelector` in `src/elements/fieldSelector.ts`
-3. **Prettify output**: Use the `Prettify<T>` utility from `src/utils/core.ts` to simplify complex intersections
+1. **Check type narrowing**: Focus on `ResolveMatchOutput` and `FilterUnion` in `packages/tmql/src/stages/match.ts`
+2. **Check field resolution**: Verify `GetFieldType` and `InferFieldSelector` in `packages/tmql/src/elements/fieldSelector.ts`
+3. **Prettify output**: Use the `Prettify<T>` utility from `packages/tmql/src/utils/core.ts` to simplify complex intersections
 
 ### Common Type Issues & Solutions
 
 - **`never` type in pipeline stages**: Usually indicates impossible type conditions in match operations or field resolution
 - **Union type filtering**: Check that `FilterUnion` is properly evaluating each union member
-- **Dotted field inference**: Use `FlattenDotSet` from `src/utils/core.ts` to properly expand nested structures
+- **Dotted field inference**: Use `FlattenDotSet` from `packages/tmql/src/utils/core.ts` to properly expand nested structures
 
 ### Local MongoDB Testing
 
@@ -233,7 +232,7 @@ When testing TypeScript type assertions or checking for type errors, **always us
 
 ```bash
 # This uses default TypeScript settings, not the project's config
-npx tsc --noEmit src/stages/set.typeAssertions.ts
+npx tsc --noEmit packages/tmql/src/stages/set.typeAssertions.ts
 bun run tsx some-file.ts  # May not catch all type issues
 ```
 

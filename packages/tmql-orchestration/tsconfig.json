@@ -5,11 +5,7 @@
     "outDir": "./dist",
     "composite": true,
     "allowJs": false,
-    "checkJs": false,
-    "baseUrl": ".",
-    "paths": {
-      "tmql": ["../tmql/dist/index.d.ts"]
-    }
+    "checkJs": false
   },
   "include": ["src/**/*.ts"],
   "exclude": ["dist", "**/*.test.ts"],

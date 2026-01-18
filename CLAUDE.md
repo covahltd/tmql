@@ -35,7 +35,7 @@ tmql/
 
 ### Licensing Rationale
 
-- **tmql (Apache 2.0)**: Core pipeline building funded by NLnet open source grant. Fully OSI-approved, can be used anywhere.
+- **tmql (Apache 2.0)**: Core pipeline builder. Fully OSI-approved, can be used anywhere.
 - **tmql-orchestration (ELv2)**: DAG execution and materialization features. Commercial-friendly but not OSI-approved.
 
 ### Package Dependencies

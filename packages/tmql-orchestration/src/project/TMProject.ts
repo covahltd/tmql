@@ -6,8 +6,8 @@
  */
 
 import { MongoClient } from "mongodb";
+import { tmql } from "tmql";
 import { TMModel, isTMModel } from "../model/TMModel";
-import { tmql } from "../singleton/tmql";
 
 // ============================================================================
 // Configuration Types

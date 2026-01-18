@@ -6,14 +6,15 @@
  */
 
 import { TimeSeriesCollectionOptions } from "mongodb";
-import { Document } from "../utils/core";
-import { TMPipeline } from "../pipeline/TMPipeline";
 import {
+  Document,
+  TMPipeline,
+  TMSource,
+  InferSourceType,
   FieldSelector,
   FieldSelectorsThatInferTo,
   TopLevelField,
-} from "../elements/fieldSelector";
-import { TMSource, InferSourceType } from "../source/TMSource";
+} from "tmql";
 
 // ============================================================================
 // Time-Series Options

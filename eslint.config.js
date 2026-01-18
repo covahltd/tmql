@@ -3,21 +3,28 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 import { defineConfig } from "eslint/config";
 
+const ignorePatterns = [
+  ".claude/**/*",
+  "dist/**/*",
+  "packages/*/dist/**/*",
+  "benchmarks/**/*",
+];
+
 export default defineConfig([
   {
     files: ["**/*.{js,mjs,cjs,ts,mts,cts}"],
-    ignores: [".claude/**/*", "dist/**/*", "benchmarks/**/*"],
+    ignores: ignorePatterns,
     plugins: { js },
     extends: ["js/recommended"],
   },
   {
     files: ["**/*.{js,mjs,cjs,ts,mts,cts}"],
-    ignores: [".claude/**/*", "dist/**/*", "benchmarks/**/*"],
+    ignores: ignorePatterns,
     languageOptions: { globals: globals.browser },
   },
   {
     ...tseslint.configs.strictTypeChecked[0],
-    ignores: [".claude/**/*", "dist/**/*", "benchmarks/**/*"],
+    ignores: ignorePatterns,
     rules: {
       // Disable base rule and use TypeScript-specific version
       "no-unused-vars": "off",

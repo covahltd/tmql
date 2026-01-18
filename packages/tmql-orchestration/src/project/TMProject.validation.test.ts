@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TMCollection } from "../collection/TMCollection";
+import { TMCollection } from "tmql";
 import { TMModel } from "../model/TMModel";
 import { TMProject } from "./TMProject";
 

@@ -2,10 +2,53 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Monorepo Structure
+
+This is a **bun workspaces monorepo** with two packages under different licenses:
+
+```
+tmql/
+├── packages/
+│   ├── tmql/                    # Core library (Apache 2.0 - OSI-approved)
+│   │   ├── src/
+│   │   │   ├── pipeline/        # TMPipeline - aggregation builder
+│   │   │   ├── stages/          # Pipeline stage implementations
+│   │   │   ├── elements/        # Type system building blocks
+│   │   │   ├── collection/      # TMCollection wrapper
+│   │   │   ├── source/          # TMSource interface
+│   │   │   ├── utils/           # Type utilities
+│   │   │   ├── singleton/       # Global tmql instance
+│   │   │   └── database/        # TMDatabase utilities
+│   │   ├── examples/            # Pipeline usage examples
+│   │   ├── benchmarking/        # TypeScript performance benchmarks
+│   │   └── LICENSE              # Apache License 2.0
+│   │
+│   └── tmql-orchestration/      # DAG orchestration (ELv2 - commercial)
+│       ├── src/
+│       │   ├── model/           # TMModel - materializable pipelines
+│       │   └── project/         # TMProject - DAG orchestrator
+│       ├── examples/            # DAG usage examples
+│       └── LICENSE              # Elastic License 2.0
+│
+└── package.json                 # Root workspace config (private)
+```
+
+### Licensing Rationale
+
+- **tmql (Apache 2.0)**: Core pipeline builder. Fully OSI-approved, can be used anywhere.
+- **tmql-orchestration (ELv2)**: DAG execution and materialization features. Commercial-friendly but not OSI-approved.
+
+### Package Dependencies
+
+- `tmql-orchestration` has `tmql` as a **peer dependency** (`^0.4.1`)
+- During development, `workspace:*` links them locally
+- Users install both packages explicitly
+
 ## Development Commands
 
-- **Build**: `bun run build` - Compiles TypeScript to JavaScript in `dist/`
-- **Watch**: `bun run watch` - Runs TypeScript compiler in watch mode
+- **Build**: `bun run build` - Builds both packages via TypeScript project references
+- **Build Watch**: `bun run build:watch` - Watch mode for both packages
+- **Clean**: `bun run clean` - Remove dist directories
 - **Lint**: `bun run lint` - Run ESLint
 - **Lint**: `bun run format` - Run Prettier
 - **Type Inspection**: `bun run tsx .claude/inspect-types.ts <variableName> [fileName]` - Debug complex TypeScript types
@@ -17,14 +60,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Core Classes
 
-- **TMPipeline**: The main aggregation pipeline builder class located in `src/pipeline/TMPipeline.ts` with three generic types:
+- **TMPipeline**: The main aggregation pipeline builder class located in `packages/tmql/src/pipeline/TMPipeline.ts` with three generic types:
   - `StartingDocs`: The original document schema (union types supported)
   - `PreviousStageDocs`: The current document schema after previous pipeline stages (defaults to StartingDocs)
   - `Mode`: Lookup mode - `"runtime"` (default) or `"model"` for DAG pipelines
 
   Each pipeline method returns a new `TMPipeline` instance with updated types to maintain type safety throughout the chain.
 
-- **TMModel**: Located in `src/model/TMModel.ts`. A named, materializable pipeline with typed input/output. Models can depend on collections or other models, forming a DAG. Generic parameters:
+- **TMModel**: Located in `packages/tmql-orchestration/src/model/TMModel.ts`. A named, materializable pipeline with typed input/output. Models can depend on collections or other models, forming a DAG. Generic parameters:
   - `TName`: Model name literal (e.g., `"stg_events"`)
   - `TInput`: Input document type from source
   - `TOutput`: Output document type after pipeline
@@ -35,15 +78,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - `TMModel.Mode.Upsert` - Uses `$merge` with `on: "_id"`, upsert semantics
   - `TMModel.Mode.Append` - Uses `$merge` with `whenMatched: "fail"`, insert only
 
-- **TMProject**: Located in `src/project/TMProject.ts`. DAG orchestrator that manages models, resolves dependencies, validates the graph, and executes models in topological order. Models are provided at construction time and validated immediately (immutable after creation). Auto-discovers all dependencies (upstream via `from` and lookup via `lookup`/`unionWith` stages) - just specify leaf models.
+- **TMProject**: Located in `packages/tmql-orchestration/src/project/TMProject.ts`. DAG orchestrator that manages models, resolves dependencies, validates the graph, and executes models in topological order. Models are provided at construction time and validated immediately (immutable after creation). Auto-discovers all dependencies (upstream via `from` and lookup via `lookup`/`unionWith` stages) - just specify leaf models.
 
-- **TMSource**: Located in `src/source/TMSource.ts`. Unified interface that both `TMCollection` and `TMModel` implement, allowing them to be used interchangeably as pipeline sources.
+- **TMSource**: Located in `packages/tmql/src/source/TMSource.ts`. Unified interface that both `TMCollection` and `TMModel` implement, allowing them to be used interchangeably as pipeline sources.
 
 ### Type System Architecture
 
-The type system is organized into modular building blocks located in `src/elements/`:
+The type system is organized into modular building blocks located in `packages/tmql/src/elements/`:
 
-#### Core Type Modules (`src/elements/`)
+#### Core Type Modules (`packages/tmql/src/elements/`)
 
 - **document.ts**: Base `Document` type (`Record<string, any>`)
 
@@ -66,7 +109,7 @@ The type system is organized into modular building blocks located in `src/elemen
 
 - **arrayOperator.ts**: Array operation type utilities
 
-#### Utility Types (`src/utils/core.ts`)
+#### Utility Types (`packages/tmql/src/utils/core.ts`)
 
 - **Type Utilities**:
   - `DollarPrefixed<T>` / `WithoutDollar<T>`: Dollar prefix manipulation
@@ -78,7 +121,7 @@ The type system is organized into modular building blocks located in `src/elemen
 
 ### Pipeline Stages
 
-Located in `src/stages/`:
+Located in `packages/tmql/src/stages/`:
 
 - **match.ts**: `$match` filtering with comprehensive type narrowing
   - **Query Types**: `MatchQuery<Schema>` with support for field selectors
@@ -100,9 +143,9 @@ TODO: Document the rest of the stages
 
 - Use `bun` as the package manager (specified in package.json)
 - TypeScript strict mode is enabled
-- Modular architecture: type utilities separated into `src/elements/` for reusability
+- Modular architecture: type utilities separated into `packages/tmql/src/elements/` for reusability
 - Examples in `examples/*.ts` demonstrate example pipeline use cases
-- Assertions in `src/*/*.typeAssertions.ts` are used as tests for type functionality
+- Assertions in `packages/tmql/src/*/*.typeAssertions.ts` are used as tests for type functionality
 - The `custom()` method allows escape hatches for unsupported aggregation stages while maintaining type flow
 
 ## Type Inspection Tools & Debugging
@@ -141,15 +184,15 @@ The `.claude/inspect-types.ts` file is a CLI tool that:
 
 For the TMPipeline's complex generics (`StartingDocs`, `PreviousStageDocs`):
 
-1. **Check type narrowing**: Focus on `ResolveMatchOutput` and `FilterUnion` in `src/stages/match.ts`
-2. **Check field resolution**: Verify `GetFieldType` and `InferFieldSelector` in `src/elements/fieldSelector.ts`
-3. **Prettify output**: Use the `Prettify<T>` utility from `src/utils/core.ts` to simplify complex intersections
+1. **Check type narrowing**: Focus on `ResolveMatchOutput` and `FilterUnion` in `packages/tmql/src/stages/match.ts`
+2. **Check field resolution**: Verify `GetFieldType` and `InferFieldSelector` in `packages/tmql/src/elements/fieldSelector.ts`
+3. **Prettify output**: Use the `Prettify<T>` utility from `packages/tmql/src/utils/core.ts` to simplify complex intersections
 
 ### Common Type Issues & Solutions
 
 - **`never` type in pipeline stages**: Usually indicates impossible type conditions in match operations or field resolution
 - **Union type filtering**: Check that `FilterUnion` is properly evaluating each union member
-- **Dotted field inference**: Use `FlattenDotSet` from `src/utils/core.ts` to properly expand nested structures
+- **Dotted field inference**: Use `FlattenDotSet` from `packages/tmql/src/utils/core.ts` to properly expand nested structures
 
 ### Local MongoDB Testing
 
@@ -191,7 +234,7 @@ When testing TypeScript type assertions or checking for type errors, **always us
 
 ```bash
 # This uses default TypeScript settings, not the project's config
-npx tsc --noEmit src/stages/set.typeAssertions.ts
+npx tsc --noEmit packages/tmql/src/stages/set.typeAssertions.ts
 bun run tsx some-file.ts  # May not catch all type issues
 ```
 

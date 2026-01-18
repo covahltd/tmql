@@ -8,7 +8,8 @@
  * 4. Use lookup stages to join data from different sources
  */
 
-import { TMCollection, TMModel, TMProject } from "../src";
+import { TMCollection } from "tmql";
+import { TMModel, TMProject } from "tmql-orchestration";
 
 // ============================================================================
 // Define Source Collections (your existing MongoDB collections)

@@ -2,6 +2,25 @@
 
 **Typed Mongo Query Language** - A fully type-safe MongoDB aggregation pipeline builder for TypeScript projects.
 
+## Packages
+
+This monorepo contains two packages with different licenses:
+
+| Package                                               | Description                            | License                                       |
+| ----------------------------------------------------- | -------------------------------------- | --------------------------------------------- |
+| [`tmql`](./packages/tmql)                             | Core pipeline builder                  | [Apache 2.0](./packages/tmql/LICENSE)         |
+| [`tmql-orchestration`](./packages/tmql-orchestration) | DAG orchestration (TMModel, TMProject) | [ELv2](./packages/tmql-orchestration/LICENSE) |
+
+### Installation
+
+```bash
+# Core library only
+npm install tmql
+
+# With DAG orchestration
+npm install tmql tmql-orchestration
+```
+
 ## Purpose
 
 tmql provides compile-time type safety for MongoDB aggregation pipelines, ensuring that:
@@ -236,6 +255,8 @@ All methods use MongoDB driver types for parameters and return values, providing
 
 ## DAG Model Composition
 
+> **Note:** DAG features require the `tmql-orchestration` package.
+
 tmql supports composing pipelines into a Directed Acyclic Graph (DAG) with typed dependencies and configurable materialization strategies, inspired by dbt's approach but tailored for MongoDB.
 
 ### Defining Models
@@ -243,7 +264,8 @@ tmql supports composing pipelines into a Directed Acyclic Graph (DAG) with typed
 Models are standalone pipeline definitions with typed input/output:
 
 ```typescript
-import { TMCollection, TMModel, TMProject } from "tmql";
+import { TMCollection } from "tmql";
+import { TMModel, TMProject } from "tmql-orchestration";
 
 // Source collection
 const RawEventsCollection = new TMCollection<RawEvent>({
@@ -313,3 +335,10 @@ await analyticsProject.run({
 ## Status
 
 tmql is actively under development. We're continuously working on improving type safety, adding new features, and enhancing the developer experience. Contributions, feedback, and suggestions are welcome!
+
+## License
+
+This project uses dual licensing:
+
+- **`tmql`** - [Apache License 2.0](./packages/tmql/LICENSE) (OSI-approved). Core pipeline builder.
+- **`tmql-orchestration`** - [Elastic License 2.0](./packages/tmql-orchestration/LICENSE). DAG execution and materialization features.

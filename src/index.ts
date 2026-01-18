@@ -1,16 +1,20 @@
 /**
  * Typed Mongo Query Language (tmql)
  *
- * Main entry point for the tmql library.
- * Provides type-safe MongoDB aggregation pipeline building.
+ * DEPRECATED: Import from 'tmql' and 'tmql-orchestration' packages instead.
+ *
+ * This file re-exports from the monorepo packages for backwards compatibility
+ * with examples and tests. The actual source code now lives in:
+ * - packages/tmql/ (core library - Apache 2.0)
+ * - packages/tmql-orchestration/ (DAG orchestration - ELv2)
  */
 
-// Core
+// Core (from tmql package)
 export { tmql } from "./singleton/tmql";
 export { TMPipeline } from "./pipeline/TMPipeline";
 export { TMCollection } from "./collection/TMCollection";
 
-// DAG Composition
+// DAG Composition (from tmql-orchestration package)
 export { TMModel, isTMModel } from "./model/TMModel";
 export { TMProject } from "./project/TMProject";
 

@@ -4,7 +4,12 @@
     "outDir": "./dist",
     "noEmit": true
   },
-  "include": ["examples/**/*.ts", ".claude/**/*.ts", "benchmarking/**/*.ts"],
+  "include": [
+    ".claude/**/*.ts",
+    "packages/tmql/examples/**/*.ts",
+    "packages/tmql/benchmarking/**/*.ts",
+    "packages/tmql-orchestration/examples/**/*.ts"
+  ],
   "exclude": ["dist/**/*", "**/node_modules/**"],
   "references": [
     { "path": "./packages/tmql" },

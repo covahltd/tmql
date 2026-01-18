@@ -19,15 +19,17 @@ tmql/
 │   │   │   ├── utils/           # Type utilities
 │   │   │   ├── singleton/       # Global tmql instance
 │   │   │   └── database/        # TMDatabase utilities
+│   │   ├── examples/            # Pipeline usage examples
+│   │   ├── benchmarking/        # TypeScript performance benchmarks
 │   │   └── LICENSE              # Apache License 2.0
 │   │
 │   └── tmql-orchestration/      # DAG orchestration (ELv2 - commercial)
 │       ├── src/
 │       │   ├── model/           # TMModel - materializable pipelines
 │       │   └── project/         # TMProject - DAG orchestrator
+│       ├── examples/            # DAG usage examples
 │       └── LICENSE              # Elastic License 2.0
 │
-├── examples/                    # Example usage
 └── package.json                 # Root workspace config (private)
 ```
 

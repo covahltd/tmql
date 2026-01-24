@@ -116,7 +116,8 @@ const _projectThenMatch = _p
     _id: 1,
     upperName: { $toUpper: "$name" },
   })
-  .match({ _id: { $exists: true } }); // Match works on projected output
+  .match({ _id: { $exists: true } }) // Match works on projected output
+  .match({ upperName: { $ne: "" } }); // Can match on computed field from project
 
 export {
   _setThenSet,

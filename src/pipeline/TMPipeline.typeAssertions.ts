@@ -114,10 +114,10 @@ const _chainedSets = _p
 const _projectThenMatch = _p
   .project({
     _id: 1,
-    upperName: { $toUpper: "$name" },
+    computedName: { $literal: "computed" },
   })
   .match({ _id: { $exists: true } }) // Match works on projected output
-  .match({ upperName: { $ne: "" } }); // Can match on computed field from project
+  .match({ computedName: { $ne: "" } }); // Can match on computed field from project
 
 export {
   _setThenSet,

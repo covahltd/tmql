@@ -1,34 +1,16 @@
 {
-  "name": "tmql",
-  "version": "0.4.1",
-  "description": "Typed Mongo Query Language - Fully type-safe MongoDB aggregation builder for TypeScript projects",
+  "name": "tmql-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Typed Mongo Query Language - Monorepo for tmql packages",
   "author": "Ryan Peggs & Tim Vyas",
-  "license": "Elastic-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/covahltd/tmql.git"
   },
-  "keywords": [
-    "mongodb",
-    "aggregation",
-    "typescript",
-    "builder",
-    "type-safe",
-    "mongo"
-  ],
   "type": "module",
-  "main": "./dist/src/index.js",
-  "types": "./dist/src/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
-    }
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE.md"
+  "workspaces": [
+    "packages/*"
   ],
   "packageManager": "bun@1.2.17",
   "engines": {
@@ -50,14 +32,12 @@
     "typescript-eslint": "^8.35.1",
     "vitest": "^4.0.15"
   },
-  "dependencies": {
-    "mongodb": "^6.17.0"
-  },
   "scripts": {
-    "build": "bun run tsc",
-    "watch": "bun run tsc --watch",
+    "build": "bun run build:packages",
+    "build:packages": "tsc --build --force",
+    "build:watch": "tsc --build --watch packages/tmql packages/tmql-orchestration",
+    "clean": "rm -rf packages/*/dist",
     "prepare": "bunx lefthook install",
-    "prepublishOnly": "bun run build",
     "changeset": "changeset",
     "changeset:status": "changeset status --since=origin/main",
     "version": "changeset version",
@@ -68,6 +48,7 @@
     "test": "vitest",
     "test:ci": "vitest run",
     "test:watch": "vitest --watch",
-    "test:coverage": "vitest --coverage"
+    "test:coverage": "vitest --coverage",
+    "typecheck": "tsc --noEmit --project tsconfig.json"
   }
 }

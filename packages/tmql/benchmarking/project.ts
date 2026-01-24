@@ -23,7 +23,8 @@ function createBenchmarkFile(
   projectOperations: number,
   outputPath: string
 ): FileInfo {
-  const imports = `import { TMPipeline, InferOutputType } from "../../src/pipeline/TMPipeline";
+  const imports = `import { TMPipeline } from "tmql";
+import type { InferOutputType } from "tmql";
 `;
 
   const schema = `

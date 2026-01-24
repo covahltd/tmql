@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { useMemoryMongo } from "../utils/useMemoryMongo";
-import { TMCollection } from "../collection/TMCollection";
+import { TMCollection, useMemoryMongo } from "tmql";
 import { TMModel } from "../model/TMModel";
 import { TMProject } from "./TMProject";
 // ============================================================================

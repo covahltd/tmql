@@ -1,7 +1,7 @@
 /**
  * Typed Mongo Query Language (tmql)
  *
- * Main entry point for the tmql library.
+ * Main entry point for the tmql core library.
  * Provides type-safe MongoDB aggregation pipeline building.
  */
 
@@ -10,16 +10,25 @@ export { tmql } from "./singleton/tmql";
 export { TMPipeline } from "./pipeline/TMPipeline";
 export { TMCollection } from "./collection/TMCollection";
 
-// DAG Composition
-export { TMModel, isTMModel } from "./model/TMModel";
-export { TMProject } from "./project/TMProject";
-
 // Type inference helpers
-export type { InferOutputType } from "./pipeline/TMPipeline";
+export type { InferOutputType, LookupMode } from "./pipeline/TMPipeline";
 export type { InferCollectionType } from "./collection/TMCollection";
-export type { InferModelOutput } from "./model/TMModel";
 export type { TMSource, InferSourceType } from "./source/TMSource";
 export type { Document, Prettify } from "./utils/core";
+
+// Re-export commonly used types from elements for advanced usage
+export type {
+  FieldSelector,
+  GetFieldType,
+  InferFieldSelector,
+  FieldSelectorsThatInferTo,
+  TopLevelField,
+} from "./elements/fieldSelector";
+export type {
+  FieldReference,
+  FieldPath,
+  InferFieldReference,
+} from "./elements/fieldReference";
 
 // Type assertion utilities (for testing type inference)
 export type {
@@ -30,3 +39,6 @@ export type {
   ExpectAssertFailure,
 } from "./utils/tests";
 export { expectType, assertTypeEqual } from "./utils/tests";
+
+// Test utilities
+export { useMemoryMongo } from "./utils/useMemoryMongo";

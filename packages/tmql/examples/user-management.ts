@@ -8,7 +8,8 @@
  * - User activity analysis
  */
 
-import { TMPipeline, InferOutputType } from "../src/pipeline/TMPipeline";
+import { TMPipeline } from "tmql";
+import type { InferOutputType } from "tmql";
 
 // ============================================================================
 // Schema Definitions

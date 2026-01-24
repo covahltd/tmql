@@ -97,6 +97,7 @@ console.log('-'.repeat(100));
 
 for (let i = 0; i < Math.min(30, typeStats.length); i++) {
   const stat = typeStats[i];
+  if (!stat) continue;
   const percentage = ((stat.count / totalInstantiations) * 100).toFixed(2);
   const name = stat.name.length > 70 ? stat.name.substring(0, 67) + '...' : stat.name;
 
@@ -163,6 +164,7 @@ console.log();
 if (projectStats.length > 0) {
   for (let i = 0; i < Math.min(20, projectStats.length); i++) {
     const stat = projectStats[i];
+    if (!stat) continue;
     console.log(`  ${stat.count.toLocaleString().padStart(8)}x | ${stat.name}`);
   }
 } else {

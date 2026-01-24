@@ -27,8 +27,14 @@
 import { execSync } from "child_process";
 import { performance } from "perf_hooks";
 import { writeFileSync, existsSync, unlinkSync } from "fs";
-import { join, basename } from "path";
+import { join, basename, dirname } from "path";
+import { fileURLToPath } from "url";
 import process from "node:process";
+
+// Get package root directory (packages/tmql/)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const PACKAGE_ROOT = join(__dirname, "..");
 
 // ============================================================================
 // Types
@@ -127,8 +133,8 @@ export function parseExtendedDiagnostics(output: string): {
  */
 export function clearTSCache(): void {
   const cacheFiles = [
-    join(process.cwd(), "tsconfig.tsbuildinfo"),
-    join(process.cwd(), ".tsbuildinfo"),
+    join(PACKAGE_ROOT, "tsconfig.tsbuildinfo"),
+    join(PACKAGE_ROOT, ".tsbuildinfo"),
   ];
   cacheFiles.forEach((file) => {
     if (existsSync(file)) {
@@ -158,7 +164,7 @@ export function measureCompilation(
       `npx tsc --noEmit --project tsconfig.benchmark.json --extendedDiagnostics 2>&1`,
       {
         encoding: "utf-8",
-        cwd: process.cwd(),
+        cwd: PACKAGE_ROOT,
         maxBuffer: 10 * 1024 * 1024, // 10MB buffer
       }
     );
@@ -228,7 +234,7 @@ export function measureBaseline(benchmarkFile: string): {
   // Clear cache before baseline measurement
   clearTSCache();
 
-  const projectFile = join(process.cwd(), "src/pipeline/index.ts");
+  const projectFile = join(PACKAGE_ROOT, "src/index.ts");
 
   // Warm-up run (with cache clear)
   measureCompilation(projectFile, true);
@@ -373,7 +379,7 @@ export function getBenchmarkPaths(name: string): {
   benchmarkFile: string;
   runsDir: string;
 } {
-  const benchmarkDir = join(process.cwd(), "benchmarks", name);
+  const benchmarkDir = join(PACKAGE_ROOT, "benchmarks", name);
   const benchmarkFile = join(benchmarkDir, "index.ts");
   const runsDir = join(benchmarkDir, "runs");
   return { benchmarkDir, benchmarkFile, runsDir };
@@ -385,7 +391,7 @@ export function getBenchmarkPaths(name: string): {
  */
 export function cleanBenchmarkFiles(): void {
   try {
-    const benchmarksDir = join(process.cwd(), "benchmarks");
+    const benchmarksDir = join(PACKAGE_ROOT, "benchmarks");
     if (!existsSync(benchmarksDir)) {
       return; // Directory doesn't exist, nothing to clean
     }

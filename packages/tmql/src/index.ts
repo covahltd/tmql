@@ -39,3 +39,6 @@ export type {
   ExpectAssertFailure,
 } from "./utils/tests";
 export { expectType, assertTypeEqual } from "./utils/tests";
+
+// Test utilities
+export { useMemoryMongo } from "./utils/useMemoryMongo";

@@ -1,10 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { TMCollection } from "tmql";
+import { TMCollection, useMemoryMongo } from "tmql";
 import { TMModel } from "../model/TMModel";
 import { TMProject } from "./TMProject";
-
-// Shared test utility from tmql package
-import { useMemoryMongo } from "../../../tmql/src/utils/useMemoryMongo";
 // ============================================================================
 // Simple DAG Test Data
 // ============================================================================

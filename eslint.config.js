@@ -26,6 +26,19 @@ export default defineConfig([
     ...tseslint.configs.strictTypeChecked[0],
     ignores: ignorePatterns,
     rules: {
+      // Prevent cross-package relative imports - use package names instead
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/packages/**"],
+              message:
+                'Use package imports (e.g., "tmql") instead of relative cross-package imports',
+            },
+          ],
+        },
+      ],
       // Disable base rule and use TypeScript-specific version
       "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": [

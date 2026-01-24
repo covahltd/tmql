@@ -277,3 +277,85 @@ The IDE (VS Code) automatically uses the project's tsconfig.json, which is why i
 ## Type Assertion Tests
 
 When the type assertion tests in `*.typeAssertions.ts` files show no errors in the IDE but fail when running `tsc` directly on the file, it means the types are actually correct but the test methodology was wrong. Always use the project build to verify type assertions.
+
+## Claude Code Workflow: Pre-Commit Validation Pattern
+
+When working in GitHub Actions workflows (e.g., as a Claude Code agent), follow this pre-commit validation pattern to match the local development workflow and enable self-healing before committing changes.
+
+### The Pattern
+
+**Before committing any changes, always run these commands in order:**
+
+```bash
+# 1. Type check (catches type errors)
+bun run build
+
+# 2. Auto-fix linting issues
+bun run lint:fix
+
+# 3. Auto-fix formatting issues
+bun run format:fix
+
+# 4. Run tests
+bun run test:ci
+
+# 5. Stage any auto-fixes that were applied
+git add -A
+
+# 6. Then commit with descriptive message
+git commit -m "feat: your change description"
+
+# 7. Push to remote
+git push origin HEAD
+```
+
+### Why This Matters
+
+This validation sequence mirrors the local `.lefthook.yml` pre-commit hooks and provides several benefits:
+
+1. **Catches errors before commit**: Type errors and test failures are detected before creating the commit, not after pushing to CI
+2. **Self-healing**: Auto-fix commands (`lint:fix`, `format:fix`) automatically repair style issues and include fixes in the same commit
+3. **Single clean commit**: All changes and fixes are bundled together, avoiding noisy follow-up "fix linting" commits
+4. **Consistent with local development**: Developers with lefthook installed get the same validation locally
+
+### Commands Explained
+
+- `bun run build`: Runs TypeScript compiler with project's strict tsconfig.json settings - this is your primary type check
+- `bun run lint:fix`: Runs ESLint with auto-fix enabled - repairs code style issues
+- `bun run format:fix`: Runs Prettier with write mode - ensures consistent formatting
+- `bun run test:ci`: Runs the full test suite in CI mode - validates functionality
+- `git add -A`: Stages any files that were auto-fixed by lint:fix or format:fix
+
+### Example Workflow
+
+```bash
+# Make your code changes
+# ... edit files ...
+
+# Validate before committing
+bun run build          # ✅ Type check passes
+bun run lint:fix       # ✅ Auto-fixed 3 linting issues
+bun run format:fix     # ✅ Auto-formatted 2 files
+bun run test:ci        # ✅ All 100 tests pass
+
+# Stage everything (including auto-fixes)
+git add -A
+
+# Commit with co-author if triggered by a user
+git commit -m "feat: add new expression operators
+
+Co-authored-by: Tim Vyas <timvyas@users.noreply.github.com>"
+
+# Push to remote
+git push origin HEAD
+```
+
+### What Happens If Validation Fails
+
+If any validation step fails:
+
+1. **Type check fails** (`bun run build`): Fix type errors before committing
+2. **Tests fail** (`bun run test:ci`): Fix failing tests before committing
+3. **Lint/format**: These auto-fix, so just stage the fixes with `git add -A`
+
+Do NOT commit until all validation passes. This prevents pushing broken code and matches the local development experience where commits are blocked until hooks pass.

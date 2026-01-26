@@ -102,9 +102,9 @@ function animateFixing(startTime) {
     animationTimeouts.push(
       setTimeout(() => {
         // Hide previous cursor if any
-        document.querySelectorAll(".code-cursor").forEach((c) =>
-          c.classList.remove("visible")
-        );
+        document
+          .querySelectorAll(".code-cursor")
+          .forEach((c) => c.classList.remove("visible"));
 
         const cursor = document.querySelector(
           `.code-cursor[data-cursor="${fixNum}"]`
@@ -149,9 +149,9 @@ function animateFixing(startTime) {
     300;
   animationTimeouts.push(
     setTimeout(() => {
-      document.querySelectorAll(".code-cursor").forEach((c) =>
-        c.classList.remove("visible")
-      );
+      document
+        .querySelectorAll(".code-cursor")
+        .forEach((c) => c.classList.remove("visible"));
       DOM.compileSection.classList.add("shrunk");
       DOM.allClear.classList.add("visible");
     }, allFixedTime)
@@ -223,13 +223,10 @@ function animateRuntime() {
 
   // Mark deploy done, show "Running..." indicator
   animationTimeouts.push(
-    setTimeout(
-      () => {
-        DOM.deployingIndicator.classList.add("done");
-        DOM.runningIndicator.classList.add("visible");
-      },
-      ANIMATION_CONFIG.DEPLOY_START + ANIMATION_CONFIG.DEPLOY_DURATION
-    )
+    setTimeout(() => {
+      DOM.deployingIndicator.classList.add("done");
+      DOM.runningIndicator.classList.add("visible");
+    }, ANIMATION_CONFIG.DEPLOY_START + ANIMATION_CONFIG.DEPLOY_DURATION)
   );
 
   // Mark running as failed, show error

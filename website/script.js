@@ -106,7 +106,9 @@ function animateFixing(startTime) {
           c.classList.remove("visible")
         );
 
-        const cursor = document.querySelector(`.code-cursor[data-cursor="${fixNum}"]`);
+        const cursor = document.querySelector(
+          `.code-cursor[data-cursor="${fixNum}"]`
+        );
         if (cursor) cursor.classList.add("visible");
       }, fixTime)
     );
@@ -115,7 +117,9 @@ function animateFixing(startTime) {
     animationTimeouts.push(
       setTimeout(() => {
         // Fix the code
-        const fixable = document.querySelector(`.fixable-code[data-fix="${fixNum}"]`);
+        const fixable = document.querySelector(
+          `.fixable-code[data-fix="${fixNum}"]`
+        );
         if (fixable) fixable.classList.add("is-fixed");
 
         // Remove the underline
@@ -125,7 +129,9 @@ function animateFixing(startTime) {
         if (underline) underline.classList.remove("active");
 
         // Fade out the error
-        const errorLine = document.querySelector(`.error-line[data-error="${fixNum}"]`);
+        const errorLine = document.querySelector(
+          `.error-line[data-error="${fixNum}"]`
+        );
         const errorDetail = document.querySelector(
           `.error-detail[data-error="${fixNum}"]`
         );
@@ -168,12 +174,18 @@ function animateCompileTime() {
     animationTimeouts.push(
       setTimeout(() => {
         // Show underline in code
-        const underline = document.querySelector(`.error-underline[data-error="${i}"]`);
+        const underline = document.querySelector(
+          `.error-underline[data-error="${i}"]`
+        );
         if (underline) underline.classList.add("active");
 
         // Show error line and detail
-        const errorLine = document.querySelector(`.error-line[data-error="${i}"]`);
-        const errorDetail = document.querySelector(`.error-detail[data-error="${i}"]`);
+        const errorLine = document.querySelector(
+          `.error-line[data-error="${i}"]`
+        );
+        const errorDetail = document.querySelector(
+          `.error-detail[data-error="${i}"]`
+        );
         if (errorLine) errorLine.classList.add("visible");
         if (errorDetail) {
           setTimeout(() => errorDetail.classList.add("visible"), 50);
@@ -229,7 +241,10 @@ function animateRuntime() {
           setTimeout(showReplayButton, 500);
         }, 300);
       }, ANIMATION_CONFIG.ERROR_DELAY);
-    }, ANIMATION_CONFIG.DEPLOY_START + ANIMATION_CONFIG.DEPLOY_DURATION + ANIMATION_CONFIG.RUN_DURATION)
+    },
+    ANIMATION_CONFIG.DEPLOY_START +
+      ANIMATION_CONFIG.DEPLOY_DURATION +
+      ANIMATION_CONFIG.RUN_DURATION)
   );
 }
 

@@ -255,6 +255,18 @@ function animateRuntime() {
   );
 }
 
+function isInView(element) {
+  const rect = element.getBoundingClientRect();
+  const windowHeight =
+    window.innerHeight || document.documentElement.clientHeight;
+  return (
+    rect.top < windowHeight &&
+    rect.bottom > 0 &&
+    rect.height * 0.5 <
+      Math.min(rect.bottom, windowHeight) - Math.max(rect.top, 0)
+  );
+}
+
 function replayAnimations() {
   clearAnimations();
   resetState();
@@ -263,13 +275,21 @@ function replayAnimations() {
   hasAnimatedRuntime = false;
   hasAnimatedCompile = false;
 
-  // Small delay before starting both animations
+  const runtimeTerminal = document.getElementById("runtime-terminal");
+  const compileTerminal = document.getElementById("compile-terminal");
+
+  // Only start animations for terminals currently in view
+  // Others will trigger via Intersection Observer when scrolled to
   animationTimeouts.push(
     setTimeout(() => {
-      hasAnimatedRuntime = true;
-      hasAnimatedCompile = true;
-      animateCompileTime();
-      animateRuntime();
+      if (runtimeTerminal && isInView(runtimeTerminal)) {
+        hasAnimatedRuntime = true;
+        animateRuntime();
+      }
+      if (compileTerminal && isInView(compileTerminal)) {
+        hasAnimatedCompile = true;
+        animateCompileTime();
+      }
     }, 100)
   );
 }
@@ -312,6 +332,16 @@ document.addEventListener("DOMContentLoaded", () => {
   if (compileTerminal) observer.observe(compileTerminal);
 });
 
+// Copy command to clipboard
+function copyCommand() {
+  navigator.clipboard.writeText("npm install pipesafe").then(() => {
+    const feedback = document.getElementById("copy-feedback");
+    feedback.classList.add("visible");
+    setTimeout(() => feedback.classList.remove("visible"), 1500);
+  });
+}
+
 // Make functions globally accessible for inline onclick
 window.startFixAnimation = startFixAnimation;
 window.replayAnimations = replayAnimations;
+window.copyCommand = copyCommand;

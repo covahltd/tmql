@@ -464,19 +464,43 @@ pre {
 }
 
 .install-box {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   background-color: #0d2c3a;
   padding: 1rem 2rem;
   border-radius: 8px;
   border: 1px solid #1a3a4a;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.install-box:hover {
+  border-color: #00ed64;
+  background-color: #112733;
 }
 
 .install-box .prompt {
   color: #00ed64;
+  user-select: none;
 }
 
 .install-box .command {
   color: #e3fcf7;
+}
+
+.copy-feedback {
+  position: absolute;
+  right: -70px;
+  color: #00ed64;
+  font-size: 0.8rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.copy-feedback.visible {
+  opacity: 1;
 }
 
 .status {

@@ -334,7 +334,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Copy command to clipboard
 function copyCommand() {
-  navigator.clipboard.writeText("npm install pipesafe").then(() => {
+  navigator.clipboard.writeText("npm install @pipesafe/core").then(() => {
     const feedback = document.getElementById("copy-feedback");
     feedback.classList.add("visible");
     setTimeout(() => feedback.classList.remove("visible"), 1500);

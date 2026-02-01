@@ -31,7 +31,7 @@ import { join, basename, dirname } from "path";
 import { fileURLToPath } from "url";
 import process from "node:process";
 
-// Get package root directory (packages/tmql/)
+// Get package root directory (packages/core/)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PACKAGE_ROOT = join(__dirname, "..");

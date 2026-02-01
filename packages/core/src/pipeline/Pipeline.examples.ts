@@ -80,13 +80,14 @@ const concatPipeline = new Pipeline<TestDoc>()
 export type ConcatOutputType = InferOutputType<typeof concatPipeline>;
 // Should be: { items: string[], numbers: number[], tags: ("a" | "b" | "c")[], name: string }
 
-// Type validation test: This should cause a type error (uncomment to verify)
+// Type validation test: This should cause a type error
 // Note: Currently "$name" is treated as a string literal, not a field reference
-// const invalidPipeline = new Pipeline<TestDoc>().set({
-//   items: {
-//     $concatArrays: ["$name", ["test"]], // ERROR: $name is string, not array
-//   },
-// });
+// @ts-expect-error - ERROR: $name is string, not array
+const _invalidPipeline = new Pipeline<TestDoc>().set({
+  items: {
+    $concatArrays: ["$name", ["test"]], // ERROR: $name is string, not array
+  },
+});
 
 console.log("\n$concatArrays pipeline:");
 console.log(concatPipeline.getPipeline());

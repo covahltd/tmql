@@ -1,4 +1,4 @@
-# tmql-orchestration
+# @pipesafe/manifold
 
 ## 0.5.1
 

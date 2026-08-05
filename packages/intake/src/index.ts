@@ -29,6 +29,7 @@ export type {
   FetcherConfig,
   FetcherTrigger,
   FetcherOutput,
+  CoalesceConfig,
   FetchContext,
   IntakeLogger,
 } from "./fetcher/Fetcher";

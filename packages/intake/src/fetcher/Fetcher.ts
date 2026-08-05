@@ -66,6 +66,27 @@ export interface FetcherOutput<TDoc extends Document> {
   mode?: "upsert" | "append";
 }
 
+/**
+ * Read-side coalescing: collapse the pending envelope backlog to one unit
+ * of work per key BEFORE fetching. Natural-key upserts already make the
+ * write side idempotent; coalescing is what keeps the read side inside a
+ * rate budget. For notification-only sources (webhook carries only a
+ * resource id), a burst of N events referencing R distinct resources needs
+ * R fetches, not N - against a shared per-account limit that is the
+ * difference between minutes and hours of staleness during a spike.
+ */
+export interface CoalesceConfig<TEvent extends Document> {
+  /**
+   * Envelopes with equal keys are collapsed to the LATEST envelope per key
+   * within a claimed batch (e.g. the resource id from the payload).
+   */
+  key: (envelope: IntakeEnvelope<TEvent>) => string;
+  /** Max distinct keys handed to one handler invocation. */
+  maxBatchSize?: number;
+  /** Max time work may accumulate before a claim must run. */
+  maxWaitSeconds?: number;
+}
+
 export interface FetcherConfig<
   TName extends string,
   TEvent extends Document,
@@ -74,15 +95,21 @@ export interface FetcherConfig<
   name: TName;
   trigger: FetcherTrigger<TEvent>;
   /**
-   * Called once per envelope (webhook trigger) or per tick (schedule
-   * trigger; `envelope` is null). Return or yield the documents to
-   * write - an AsyncIterable supports pagination without buffering.
+   * Called with a CLAIMED BATCH of envelopes (webhook trigger) or an
+   * empty array (schedule trigger ticks). Receiving a set - rather than
+   * one envelope per call - is what makes ID-set batched requests
+   * possible ("give me these 50 resources in one call"); with `coalesce`
+   * configured the batch is already deduped to the latest envelope per
+   * key. Return or yield the documents to write - an AsyncIterable
+   * supports pagination without buffering.
    */
   handler: (
-    input: { envelope: IntakeEnvelope<TEvent> | null },
+    input: { envelopes: IntakeEnvelope<TEvent>[] },
     ctx: FetchContext
   ) => AsyncIterable<TDoc> | Promise<TDoc[]>;
   output: FetcherOutput<TDoc>;
+  /** Collapse the pending backlog per key before fetching. */
+  coalesce?: CoalesceConfig<TEvent>;
   rateLimit?: { requestsPerSecond: number };
   /** Consumer-level attempts; transport retries come from the sweeper. */
   retry?: { maxAttempts?: number };

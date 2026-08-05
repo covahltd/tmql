@@ -95,15 +95,39 @@ arrived", queryable with PipeSafe itself.
 ### `Fetcher<TName, TEvent, TDoc>`
 
 Turns envelopes (or cron ticks) into full documents by calling the
-third-party REST API. Triggered per envelope (`{ webhook, filter? }`) or on a
-schedule (`{ schedule: cron }`). The handler yields `TDoc`s — an
-`AsyncIterable` supports pagination without buffering — and `ctx.fetch`
-wraps retry/backoff (429/5xx) and rate limiting so handlers stay simple.
-Output is `{ collection, key, mode }` where `key: keyof TDoc & string` drives
+third-party REST API. Triggered by a webhook (`{ webhook, filter? }`) or on a
+schedule (`{ schedule: cron }`). The handler receives a **claimed batch of
+envelopes** (empty for schedule ticks), yields `TDoc`s — an `AsyncIterable`
+supports pagination without buffering — and `ctx.fetch` wraps retry/backoff
+(429/5xx) and rate limiting so handlers stay simple. Output is
+`{ collection, key, mode }` where `key: keyof TDoc & string` drives
 idempotent natural-key upserts. The upsert writer also sets `_id` from the
 natural key, so downstream manifold models using `$merge on: "_id"`
 (`Model.Mode.Upsert`) compose without extra keys — and the output type
 reflects it: `output: Collection<TDoc & { _id: string }>`.
+
+**Read-side coalescing is a first-class Fetcher concern, not a hardening
+option.** Natural-key upserts make the _write_ side idempotent, but nothing
+about them collapses N envelopes resolving to the same resource into one
+request — and for notification-only sources (the webhook body carries only a
+resource id and lifecycle event, so the REST callback is load-bearing), fetch
+granularity dominates drain time. Measured against a live high-volume
+commercial source (notification-only webhooks behind an account-wide limit of
+a few hundred requests per minute, shared across every consumer): a batch
+dispatch run clearing ~50k stock-movement events in one peak trading hour
+drains in **~4 hours fetched one-per-event, ~1 hour per parent document, or
+under a minute per distinct entity with ID-set batched requests (~30 requests
+for ~1.5k distinct entities)** — three orders of magnitude from granularity
+alone, with the worst case landing in the busiest trading hour of the year.
+Hence:
+
+- `coalesce: { key(envelope), maxBatchSize?, maxWaitSeconds? }` on the
+  fetcher collapses the pending backlog to the latest envelope per key
+  before the handler runs (coalesced-away envelopes are marked `processed`
+  with a reference to the envelope that superseded them).
+- The handler signature takes the claimed SET (`{ envelopes }`), because a
+  handler that receives one envelope per call structurally cannot build
+  ID-set batched requests ("these 50 resources in one call").
 
 ### `Intake` — the orchestrator
 
@@ -142,10 +166,18 @@ any queue system:
      DocumentDB). Consumers stay scale-to-zero serverless.
    - **`changeStreamWatcher`** (dev + long-running runtimes): the same watch
      loop in-process. Powers `Intake.dev()`.
-   - **`ledgerPoller`** (zero-extra-infra fallback for any replica-set
-     MongoDB): scheduled consumers claim envelopes atomically via
-     `findOneAndUpdate` with a `leaseUntil` lease — lease expiry is the
-     visibility timeout. Higher latency, no always-on parts.
+   - **`ledgerPoller`** (primary for high-volume/coalescing fetchers; also
+     the zero-extra-infra option for any replica-set MongoDB): scheduled
+     consumers claim envelopes atomically via `findOneAndUpdate` with a
+     `leaseUntil` lease — lease expiry is the visibility timeout. A claim
+     naturally scoops up _everything accumulated since the last run_, which
+     is exactly the shape coalescing wants and the natural dedupe point;
+     per-event push strategies must rebuild batching on top. The cost is
+     idle latency (poll interval) — so strategy choice is per-fetcher, not
+     per-intake: high-volume notification sources take claim-based batched
+     dispatch, low-volume latency-sensitive ones take the push path. The
+     dispatch seam must support per-fetcher strategy selection; settle this
+     in Phase 2 before the seam hardens.
    - **`atlasTrigger`** (deferred, unscheduled — see
      [Deferred work](#deferred-work)).
 3. **Consumer**: load envelope by `_id`; skip if `processed`; run the
@@ -272,7 +304,7 @@ generic flow per repo convention.
 | Phase                                                         | Scope                                                                                                                                                                                                                              | Acceptance                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **0 (this PR)**                                               | infra + intake scaffolds, this document                                                                                                                                                                                            | build, lint, `typecheck:packages` green with both packages                                                                                                                                                                                                                                                                                                                                                           |
-| **1 — local runtime**                                         | envelope ledger ops, verifier implementations, gateway/consumer code paths, `dev()` (change-stream dispatch), `replay()`                                                                                                           | Stripe-shaped integration test on `useMemoryMongo`: signed POST → envelope → dispatch → fetcher (mock API) → typed upsert; duplicate-delivery test proves effectively-once; failure test proves `failed` + backoff re-drive + replay; watcher-restart test proves resume tokens                                                                                                                                      |
+| **1 — local runtime**                                         | envelope ledger ops, verifier implementations, gateway/consumer code paths, claim + coalesce semantics (batch handler input, latest-per-key dedupe), `dev()` (change-stream dispatch), `replay()`                                  | Stripe-shaped integration test on `useMemoryMongo`: signed POST → envelope → dispatch → fetcher (mock API) → typed upsert; duplicate-delivery test proves effectively-once; coalescing test proves N distinct envelopes for R distinct resources produce R fetches (superseded envelopes marked processed); failure test proves `failed` + backoff re-drive + replay; watcher-restart test proves resume tokens      |
 | **2 — dispatch seam**                                         | `ledgerPoller` claim/lease semantics, sweeper logic, manifold's dispatch strategies (`DispatchConfig` in `packages/manifold/src/events/`) proven with two local implementations                                                    | kill-consumer-mid-flight test shows lease-expiry redelivery without double-processing                                                                                                                                                                                                                                                                                                                                |
 | **3 — Pulumi + AWS (MVP deploy)**                             | infra: syncLayer backend (hydrate/persist/lock, `stateStore` targeting), AWS program factory, esbuild bundling, deploy engine. intake: ingestion program composition, `watcherBridge` image, minimal CLI, least-privilege IAM docs | Stripe example deploys to clean AWS from scratch against ANY replica-set MongoDB; state visible only in MongoDB (incl. separate-cluster `stateStore`); live event lands via bridge; bridge restart resumes from token; `plan()` on unchanged config is all no-ops; `teardown()` leaves nothing; concurrent deploys blocked; **no ingestion concepts in infra's API** (manifold must be able to consume it unchanged) |
 | **4 — hardening**                                             | `status()` with ledger stats + bridge health, cursor-state polling sources, backfill helper, DLQ ops tooling, API Gateway/custom domains                                                                                           | poll-only source ingests on schedule with persisted cursor; ops runbook                                                                                                                                                                                                                                                                                                                                              |
@@ -325,3 +357,11 @@ understood:
   ceiling (GridFS escape hatch out of MVP). No SQS means no 256 KB concern.
 - **Credential scoping**: ship copy-pasteable least-privilege IAM policies
   (deployer + runtime), name-scoped to `pipesafe-intake-*`.
+- **Shared rate budgets**: many APIs rate limit **per account across all
+  consumers**, not per app — an intake cannot assume it has the documented
+  limit to itself (e.g. a 200 req/min account ceiling already shared with
+  an incumbent polling pipeline leaves real headroom well below the docs).
+  `rateLimit` must be treated as the _intake's share_, set by the operator;
+  document that deploying intake alongside an existing pipeline means
+  coordinating with or replacing it, and that coalescing (above) is the
+  main lever for living inside a shared budget.

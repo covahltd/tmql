@@ -67,14 +67,17 @@ const _customers = new Fetcher({
     // The filter sees the typed envelope
     filter: (envelope) => envelope.body.type.startsWith("customer."),
   },
-  handler: async function* ({ envelope }) {
-    // The handler sees the typed envelope (null only for schedule triggers)
-    const objectId = envelope?.body.data.object.id ?? "cus_unknown";
-    yield {
-      id: objectId,
-      email: "a@b.co",
-      livemode: true,
-    } as StripeCustomer;
+  // The coalesce key sees the typed envelope
+  coalesce: { key: (envelope) => envelope.body.data.object.id },
+  handler: async function* ({ envelopes }) {
+    // The handler sees the typed claimed batch (empty for schedule ticks)
+    for (const envelope of envelopes) {
+      yield {
+        id: envelope.body.data.object.id,
+        email: "a@b.co",
+        livemode: true,
+      } as StripeCustomer;
+    }
   },
   output: { collection: "stripe_customers", key: "id", mode: "upsert" },
 });

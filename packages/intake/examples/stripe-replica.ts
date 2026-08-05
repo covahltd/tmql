@@ -57,14 +57,18 @@ const customers = new Fetcher({
     webhook: stripe,
     filter: (envelope) => envelope.body.type.startsWith("customer."),
   },
-  handler: async function* ({ envelope }, ctx) {
+  // A burst of N customer events referencing R distinct customers claims
+  // as one batch deduped to R keys - R fetches, not N
+  coalesce: { key: (envelope) => envelope.body.data.object.id },
+  handler: async function* ({ envelopes }, ctx) {
     const apiKey = await ctx.getSecret(secret("STRIPE_API_KEY"));
-    const objectId = envelope?.body.data.object.id;
-    const res = await ctx.fetch(
-      `https://api.stripe.com/v1/customers/${objectId ?? ""}`,
-      { headers: { Authorization: `Bearer ${apiKey}` } }
-    );
-    yield (await res.json()) as StripeCustomer;
+    for (const envelope of envelopes) {
+      const res = await ctx.fetch(
+        `https://api.stripe.com/v1/customers/${envelope.body.data.object.id}`,
+        { headers: { Authorization: `Bearer ${apiKey}` } }
+      );
+      yield (await res.json()) as StripeCustomer;
+    }
   },
   output: { collection: "stripe_customers", key: "id", mode: "upsert" },
 });

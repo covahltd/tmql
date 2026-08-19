@@ -238,6 +238,13 @@ not create any. See [Deployment](#deployment-your-iac-our-handlers).
    - **`changeStream`**: lower idle latency for low-volume,
      latency-sensitive sources, at the cost of an always-on watcher (and
      therefore a container). Powers `dev()` in-process.
+
+   **Strategy is chosen per INTAKE, on its event route — not per stack.** A
+   high-volume notification source wants claim-based batched dispatch while
+   a low-volume latency-sensitive one wants the push path, and they
+   routinely sit in the same deployment. `manifest()` therefore emits one
+   dispatch schedule per distinct cron group, naming the intakes in it.
+
 3. **Runner**: resolve the scope, run the route's handler, upsert yielded
    documents by natural key under the version guard, apply `ctx.delete`
    calls, mark envelopes `processed`. A crash between output-write and

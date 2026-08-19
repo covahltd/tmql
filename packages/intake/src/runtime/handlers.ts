@@ -76,13 +76,15 @@ export function createRunHandler(
 
 /**
  * Claims pending envelopes, coalesces their identifiers per intake, and
- * runs the event routes. Under `poll` dispatch this is a cron target;
- * under `changeStream` the watcher worker calls it.
+ * runs the event routes. Under `poll` dispatch this is a cron target; under
+ * `changeStream` the watcher worker calls it. Because dispatch strategy is
+ * per-intake, `manifest()` may emit several dispatch schedules with
+ * different crons - each passes the intake names in its group.
  */
 export function createDispatchHandler(
   _stack: IntakeStack,
   _options?: RuntimeOptions
-): () => Promise<DispatchResult> {
+): (input?: { intakes?: string[] }) => Promise<DispatchResult> {
   throw new IntakeNotImplementedError("createDispatchHandler");
 }
 

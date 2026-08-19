@@ -59,6 +59,7 @@ export type {
   IntakeRunResult,
   IntakeLogger,
   OverlapPolicy,
+  EventDispatch,
 } from "./intake/Intake";
 export type {
   Verifier,
@@ -75,7 +76,6 @@ export type {
 } from "./runtime/handlers";
 export type {
   IntakeStackConfig,
-  EventDispatch,
   IntakeManifest,
   IntakeManifestEndpoint,
   IntakeManifestSchedule,

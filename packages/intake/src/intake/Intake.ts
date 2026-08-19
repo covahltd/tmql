@@ -113,6 +113,22 @@ export interface IntakeBatchConfig<TDoc extends Document> {
   overlap?: OverlapPolicy;
 }
 
+/**
+ * How this intake's landed envelopes become event runs. Per-INTAKE, not
+ * per-stack: a high-volume notification source wants claim-based batched
+ * dispatch, while a low-volume latency-sensitive one wants the push path,
+ * and they routinely sit in the same deployment.
+ *
+ * `poll` is the default: a cron trigger your IaC already knows how to
+ * create invokes the dispatch handler, which claims everything accumulated
+ * since the last run - exactly the shape identifier coalescing wants, and
+ * no always-on process. `changeStream` trades that for lower idle latency,
+ * at the cost of running the watcher as a long-lived worker.
+ */
+export type EventDispatch =
+  | { strategy: "poll"; cron?: string }
+  | { strategy: "changeStream" };
+
 export interface IntakeEventConfig<
   TEvent extends Document,
   TDoc extends Document,
@@ -134,6 +150,8 @@ export interface IntakeEventConfig<
    * with API latency at fixed concurrency. Use `rateLimit` for the budget.
    */
   concurrencyLimit?: number;
+  /** Defaults to `{ strategy: "poll" }`. */
+  dispatch?: EventDispatch;
 }
 
 /** How detected deletions are applied. Omit to ignore deletions entirely. */

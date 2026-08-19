@@ -20,20 +20,6 @@ import type { Duration } from "../intake/Scope";
 import type { Webhook } from "../webhook/Webhook";
 import { IntakeNotImplementedError } from "../errors";
 
-/**
- * How landed envelopes become event runs.
- *
- * Polling is the default: a cron trigger your IaC already knows how to
- * create invokes the dispatch handler, which claims everything accumulated
- * since the last run - exactly the shape identifier coalescing wants, and
- * no always-on process. `changeStream` trades that for lower idle latency
- * on low-volume, latency-sensitive sources, at the cost of running the
- * watcher as a long-lived worker.
- */
-export type EventDispatch =
-  | { strategy: "poll"; cron?: string }
-  | { strategy: "changeStream" };
-
 export interface IntakeStackConfig {
   /** Namespace for collections and manifest entries, e.g. "acme-prod". */
   name: string;
@@ -42,8 +28,6 @@ export interface IntakeStackConfig {
   webhooks: Webhook<string, any>[];
   intakes: Intake<string, any, any>[];
   database?: string;
-  /** Defaults to `{ strategy: "poll" }`. */
-  dispatch?: EventDispatch;
 }
 
 /** An HTTP route to create, invoking the gateway handler. */
@@ -55,7 +39,7 @@ export interface IntakeManifestEndpoint {
 /** A cron trigger to create, invoking the named handler. */
 export type IntakeManifestSchedule =
   | { kind: "batch"; intake: string; cron: string; lookback?: Duration }
-  | { kind: "dispatch"; cron: string }
+  | { kind: "dispatch"; cron: string; intakes: string[] }
   | { kind: "sweeper"; cron: string };
 
 /**
@@ -67,8 +51,8 @@ export interface IntakeManifest {
   name: string;
   endpoints: IntakeManifestEndpoint[];
   schedules: IntakeManifestSchedule[];
-  /** Long-running processes required (only under `changeStream`). */
-  workers: { kind: "watcher" }[];
+  /** Long-running processes required, for intakes on `changeStream`. */
+  workers: { kind: "watcher"; intakes: string[] }[];
   /** Collections intake reads and writes, for index/permission setup. */
   collections: { name: string; role: "envelopes" | "landing" }[];
 }
@@ -135,10 +119,6 @@ export class IntakeStack {
 
   getIntakes(): Intake<string, any, any>[] {
     return [...this.config.intakes];
-  }
-
-  getDispatch(): EventDispatch {
-    return this.config.dispatch ?? { strategy: "poll" };
   }
 
   /**

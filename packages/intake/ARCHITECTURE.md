@@ -214,10 +214,16 @@ arrived".
 
 ### `IntakeStack` — the declaration
 
-Constructed with `{ name, webhooks, intakes, database?, dispatch? }`;
-validates immediately (unique names/paths/output collections, event routes
-referencing registered webhooks); immutable afterwards. Methods:
-`validate()`, `manifest()`, `dev()`, `replay()`, `status()`.
+Constructed with `{ name, intakes, webhooks?, defaultDatabase? }`; validates
+immediately (unique intake names, webhook names, paths and output
+collections); immutable afterwards. Methods: `validate()`, `manifest()`,
+`dev()`, `replay()`, `status()`.
+
+Webhooks are **discovered** from `intakes[].event.webhook`, mirroring
+Project's ancestor discovery — declare one explicitly only when it has no
+consumer on this stack. Discovery also deletes a whole class of error: an
+event route referencing a webhook nobody registered is impossible by
+construction.
 
 It collects the units and reports what infrastructure they require; it does
 not create any. See [Deployment](#deployment-your-iac-our-handlers).
@@ -374,11 +380,7 @@ const customers = new Intake({
   },
 });
 
-export default new IntakeStack({
-  name: "acme",
-  webhooks: [stripe],
-  intakes: [customers],
-});
+export default new IntakeStack({ name: "acme", intakes: [customers] });
 
 // manifold side: Intake.output is a Source<StripeCustomer & IntakeMeta>
 const dimCustomers = new Model({

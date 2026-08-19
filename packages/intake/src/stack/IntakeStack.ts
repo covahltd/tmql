@@ -25,9 +25,15 @@ export interface IntakeStackConfig {
   name: string;
   /* `any` mirrors manifold's Project: Collection is invariant in its doc
      type, so concretely-typed units don't assign to Document-typed ones. */
-  webhooks: Webhook<string, any>[];
   intakes: Intake<string, any, any>[];
-  database?: string;
+  /**
+   * Webhooks are DISCOVERED from `intakes[].event.webhook`, mirroring
+   * Project's ancestor discovery - list one here only when it has no
+   * consumer on this stack (landing envelopes for audit, or a webhook whose
+   * intakes are batch-only for now).
+   */
+  webhooks?: Webhook<string, any>[];
+  defaultDatabase?: string;
 }
 
 /** An HTTP route to create, invoking the gateway handler. */
@@ -58,11 +64,12 @@ export interface IntakeManifest {
 }
 
 export interface IntakeValidationError {
-  type:
-    | "duplicate_name"
-    | "duplicate_path"
-    | "duplicate_output"
-    | "missing_webhook";
+  /**
+   * No `missing_webhook`: discovery makes an event route referencing an
+   * unregistered webhook impossible by construction. `duplicate_name` still
+   * catches two DISTINCT webhook instances declared under one name.
+   */
+  type: "duplicate_name" | "duplicate_path" | "duplicate_output";
   message: string;
 }
 
@@ -113,18 +120,33 @@ export class IntakeStack {
     return this.config.name;
   }
 
+  /**
+   * Every webhook this stack serves: those reached through an intake's
+   * event route, then any declared explicitly. Deduped by identity, so one
+   * Webhook feeding several intakes appears once; two distinct instances
+   * sharing a name survive here and are reported by `validate()`.
+   */
   getWebhooks(): Webhook<string, any>[] {
-    return [...this.config.webhooks];
+    const seen = new Set<Webhook<string, any>>();
+    const webhooks: Webhook<string, any>[] = [];
+    const add = (webhook: Webhook<string, any>): void => {
+      if (seen.has(webhook)) return;
+      seen.add(webhook);
+      webhooks.push(webhook);
+    };
+    for (const intake of this.config.intakes) {
+      const webhook = intake.getEvent()?.webhook;
+      if (webhook) add(webhook);
+    }
+    for (const webhook of this.config.webhooks ?? []) add(webhook);
+    return webhooks;
   }
 
   getIntakes(): Intake<string, any, any>[] {
     return [...this.config.intakes];
   }
 
-  /**
-   * Unique names, paths and output collections; every event route
-   * references a webhook registered on this stack.
-   */
+  /** Unique intake names, webhook names, paths and output collections. */
   validate(): IntakeValidationResult {
     throw new IntakeNotImplementedError("IntakeStack.validate");
   }

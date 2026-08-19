@@ -131,11 +131,11 @@ const customers = new Intake({
 // The IntakeStack (the declaration your own IaC wires up)
 // ============================================================================
 
-export default new IntakeStack({
-  name: "acme",
-  webhooks: [stripe],
-  intakes: [customers],
-});
+// `webhooks` is not listed: the stack discovers `stripe` through the
+// intake's event route, the way Project discovers a Model's ancestors.
+const acme = new IntakeStack({ name: "acme", intakes: [customers] });
+
+export default acme;
 
 // ============================================================================
 // Manifold side: Intake.output is a Source<StripeCustomer & IntakeMeta>
@@ -155,6 +155,9 @@ const project = new Project({
   models: [dimCustomers],
 });
 
-console.log("Webhook path:", stripe.getPath());
+console.log(
+  "Discovered webhooks:",
+  acme.getWebhooks().map((webhook) => webhook.getPath())
+);
 console.log("Intake output collection:", customers.output.getCollectionName());
 console.log(project.plan().toString());

@@ -135,6 +135,12 @@ const _customers = new Intake({
 type IntakeOutputTest = Assert<
   Equal<typeof _customers.output, Collection<StripeCustomer & IntakeMeta>>
 >;
+// `_deletedAt` must accept null so the downstream live-document filter -
+// `p.match({ _deletedAt: null })`, MongoDB's null-or-missing idiom - stays
+// typeable. (`$exists: false` is the wrong matcher AND narrows to `never`.)
+type SoftDeleteFilterableTest = Assert<
+  IsAssignable<null, (StripeCustomer & IntakeMeta)["_deletedAt"]>
+>;
 type IntakeNameTest = Assert<
   Equal<ReturnType<typeof _customers.getName>, "stripe_customers">
 >;
@@ -161,6 +167,7 @@ export type {
   WebhookEventsTest,
   EnvelopeBodyTest,
   IntakeOutputTest,
+  SoftDeleteFilterableTest,
   IntakeNameTest,
   EventsAreASourceTest,
   OutputIsASourceTest,

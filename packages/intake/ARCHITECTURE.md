@@ -144,7 +144,7 @@ output: {
 - **`key`** drives the upsert and is written to `_id`, so downstream
   `Model.Mode.Upsert` (`$merge on: "_id"`) composes without extra keys. The
   landing type reflects the writer-set fields: `Collection<TDoc &
-IntakeMeta>` where `IntakeMeta = { _id: string; _deletedAt?: Date }`.
+IntakeMeta>` where `IntakeMeta = { _id: string; _deletedAt?: Date | null }`.
 - **`version`** is the monotonic guard: a write only applies when the source
   version is at least the stored one. This is required in practice once both
   routes are live — an event run and a batch run may legitimately be in
@@ -160,6 +160,14 @@ IntakeMeta>` where `IntakeMeta = { _id: string; _deletedAt?: Date }`.
     everything the handler yields, then applies `mode` to any document the
     run did not see. Only sound without a window: a bounded run has not
     looked at the whole entity.
+
+  `mode: "soft"` stamps `_deletedAt`, which is optional AND nullable on
+  `IntakeMeta` because all three states are real: absent (never deleted), a
+  Date (soft-deleted), and null (deleted then resurrected by a later upsert
+  — cleared rather than `$unset`). Downstream, filter live documents with
+  the MongoDB idiom `{ _deletedAt: null }`, which matches a null value OR a
+  missing field. `$exists: false` is the wrong matcher here: it is stricter
+  than intended, excluding an explicitly-null document.
 
 #### Budget and concurrency
 
@@ -359,7 +367,7 @@ export default new IntakeStack({
 const dimCustomers = new Model({
   name: "dim_customers",
   from: customers.output,
-  pipeline: (p) => p.match({ livemode: true }),
+  pipeline: (p) => p.match({ livemode: true, _deletedAt: null }),
   materialize: { type: "collection", mode: Model.Mode.Upsert },
 });
 ```
@@ -367,20 +375,6 @@ const dimCustomers = new Model({
 Intake owns "external data into Mongo, converged"; manifold owns "transform
 what's in Mongo" — and because both sides speak `Source<T>`, a future
 unified orchestrator can compose the whole graph.
-
-## Known limitations
-
-- **Downstream soft-delete filtering does not typecheck yet.** The natural
-  consumer clause for `deletes: { mode: "soft" }` is
-  `p.match({ _deletedAt: { $exists: false } })`, but core's match narrowing
-  resolves `$exists: false` to `never` for any field the schema declares:
-  `FieldMatchingInterim` (packages/core/src/stages/match.ts) routes a
-  declared key through `ExpectedValue`, which returns `unknown` for
-  `$exists: false`, and `unknown extends Date | undefined` is false, so
-  `FilterUnion` drops the member. The `Query[K] extends { $exists: false }`
-  arm below it only ever fires for keys absent from the schema. This is a
-  pre-existing core bug, not specific to intake; it needs fixing (with its
-  own assertions and changeset) before soft deletes are usable end to end.
 
 ## Type-safety scope
 
@@ -406,6 +400,16 @@ per repo convention.
 
 ## Deferred work
 
+- **Core: `$exists: false` narrows to `never` on any declared field.**
+  Unrelated to intake's own surface (the soft-delete filter idiom is
+  `{ _deletedAt: null }`, which typechecks), but a real pre-existing core
+  bug worth fixing on its own: `FieldMatchingInterim`
+  (packages/core/src/stages/match.ts) routes a declared key through
+  `ExpectedValue`, which returns `unknown` for `$exists: false`, and
+  `unknown` extends no field type, so `FilterUnion` drops the member. Its
+  `Query[K] extends { $exists: false } ? true` arm sits in the
+  not-a-field-selector branch and so only ever fires for keys absent from
+  the schema.
 - **`ctx.checkpoint()` for mid-run resumption.** A long paginated batch run
   that dies today re-runs its whole window — correct, because idempotent,
   but expensive against a shared rate budget. Deferrable precisely because

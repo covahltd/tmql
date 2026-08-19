@@ -142,10 +142,9 @@ export default new IntakeStack({
 const dimCustomers = new Model({
   name: "dim_customers",
   from: customers.output,
-  // Soft-deleted documents would be excluded here with
-  // `_deletedAt: { $exists: false }`; core's match narrowing currently
-  // resolves that clause to `never` (see ARCHITECTURE "Known limitations").
-  pipeline: (p) => p.match({ livemode: true }),
+  // `_deletedAt: null` is the MongoDB idiom for "not soft-deleted": it
+  // matches a null value OR a missing field.
+  pipeline: (p) => p.match({ livemode: true, _deletedAt: null }),
   materialize: { type: "collection", mode: Model.Mode.Upsert },
 });
 

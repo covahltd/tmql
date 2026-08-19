@@ -38,13 +38,19 @@ export interface IntakeLogger {
 
 /**
  * Writer-set fields on every landed document. `_id` comes from the natural
- * key so downstream `Model.Mode.Upsert` (`$merge on: "_id"`) composes;
- * `_deletedAt` is set by soft deletes and is always present in the type so
- * a downstream model can filter it without casting.
+ * key so downstream `Model.Mode.Upsert` (`$merge on: "_id"`) composes.
+ *
+ * `_deletedAt` is optional AND nullable because all three states are real:
+ * absent (never deleted), a Date (soft-deleted), and null (deleted, then
+ * resurrected by a later upsert - cleared rather than `$unset`). That is
+ * also what makes the MongoDB idiom for "not deleted" - `{ _deletedAt:
+ * null }`, which matches a null value OR a missing field - the correct
+ * downstream filter, and it typechecks. Do NOT reach for `$exists: false`:
+ * it is stricter than intended (it excludes an explicitly-null document).
  */
 export interface IntakeMeta {
   _id: string;
-  _deletedAt?: Date;
+  _deletedAt?: Date | null;
 }
 
 export interface IntakeContext {

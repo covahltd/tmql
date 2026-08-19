@@ -41,10 +41,10 @@ pipesafe/
 │   ├── intake/                  # Cloud data ingestion (ELv2 - commercial)
 │   │   ├── src/
 │   │   │   ├── webhook/         # Webhook - declarative webhook sources
-│   │   │   ├── fetcher/         # Fetcher - REST enrichment/polling units
 │   │   │   ├── envelope/        # IntakeEnvelope - queue + idempotency ledger
 │   │   │   ├── verify/          # Signature verification schemes
-│   │   │   └── intake/          # Intake - orchestrator (dev/replay/deploy)
+│   │   │   ├── intake/          # Intake - idempotent replication unit + scope
+│   │   │   └── stack/           # IntakeStack - deployment unit (dev/deploy)
 │   │   ├── examples/            # Ingestion usage examples
 │   │   ├── ARCHITECTURE.md      # Design doc + phased roadmap
 │   │   └── LICENSE              # Elastic License 2.0
@@ -58,9 +58,9 @@ pipesafe/
 ### Licensing Rationale
 
 - **@pipesafe/core (Apache 2.0)**: Core pipeline builder. Fully OSI-approved, can be used anywhere.
-- **@pipesafe/manifold (ELv2)**: Transformations - batch DAG execution/materialization today, event-driven (change-stream subscriptions + dispatch strategies, scaffold) next. Owns ALL change-stream reactivity: intake's fetcher triggers are one usecase; mid-DAG reactive transformations for non-intake users are the same primitive. Commercial-friendly but not OSI-approved.
-- **@pipesafe/infra (ELv2)**: Shared cloud infrastructure engine (Pulumi with MongoDB-backed state). A suite concern by design: intake consumes it today, manifold (scheduled materialization) later — nothing in it may reference domain concepts.
-- **@pipesafe/intake (ELv2)**: Cloud data ingestion (webhooks + REST fetchers into MongoDB). Scaffold phase — see `packages/intake/ARCHITECTURE.md` for the design and phased roadmap.
+- **@pipesafe/manifold (ELv2)**: Transformations - batch DAG execution/materialization today, event-driven (change-stream subscriptions + dispatch strategies, scaffold) next. Owns ALL change-stream reactivity, for its own reactive-transformation usecases — intake does NOT depend on it. Commercial-friendly but not OSI-approved.
+- **@pipesafe/infra (ELv2)**: Shared cloud infrastructure engine (Pulumi component + program seam). A suite concern by design: intake consumes it today, manifold (scheduled materialization) later — nothing in it may reference domain concepts.
+- **@pipesafe/intake (ELv2)**: Idempotent replication of third-party data into MongoDB (scheduled batch reconciliation + optional webhook-driven event route). Scaffold phase — see `packages/intake/ARCHITECTURE.md` for the design and phased roadmap.
 
 ### Package Dependencies
 
@@ -71,8 +71,8 @@ pipesafe/
   from the registry, which 404s for unpublished packages and breaks every install.
   Tighten lower bounds after the release train ships
 - `@pipesafe/infra` peers on `@pipesafe/core`; `@pipesafe/intake` peers on
-  `@pipesafe/core`, `@pipesafe/infra`, AND `@pipesafe/manifold` (it composes
-  manifold's event layer - intake never owns change-stream machinery)
+  `@pipesafe/core` and `@pipesafe/infra` only (intake dispatches its own
+  event runs from the envelope ledger, so it does not depend on manifold)
 - During development, `workspace:*` links them locally
 - Users install the packages they need explicitly
 - all four packages are in the changesets `linked` group, so they release at
@@ -141,11 +141,11 @@ Note: The interactive `bun run changeset` command doesn't work in non-TTY enviro
 
 - **Source**: Located in `packages/core/src/source/Source.ts`. Unified interface that both `Collection` and `Model` implement, allowing them to be used interchangeably as pipeline sources.
 
-- **Webhook / Fetcher / Intake** (scaffold): Located in `packages/intake/src/`. Declarative ingestion units (verified webhook endpoints landing raw `IntakeEnvelope`s; REST enrichment/polling fetchers landing typed docs) plus the orchestrator that runs them locally and deploys them. Intake's domain ENDS at landing documents - reacting to them is manifold's event layer (a fetcher's webhook trigger lowers to a `ChangeSubscription`). Landing collections are core `Collection<T>`s, so ingested data feeds Pipelines and Models directly. Design + roadmap: `packages/intake/ARCHITECTURE.md`.
+- **Webhook / Intake / IntakeStack** (scaffold): Located in `packages/intake/src/`. An `Intake` is ONE idempotent replication unit per external entity — which makes it a reconciliation job by nature, so backfill, incremental sync, gap recovery and replay are the same unit invoked with different `IntakeScope`s. It has a mandatory scheduled batch route and an optional webhook-driven event route, both yielding the same `TDoc` into the same landing collection under the same natural key. `Webhook` declares a verified endpoint landing raw `IntakeEnvelope`s; `IntakeStack` is the deployment unit. Intake's domain ENDS at landing documents. Landing collections are core `Collection<T>`s, so replicated data feeds Pipelines and Models directly. Design + roadmap: `packages/intake/ARCHITECTURE.md`.
 
 - **ChangeSubscription / DispatchConfig** (scaffold): Located in `packages/manifold/src/events/`. The event-driven half of manifold: react to change-stream events on any `Source` by invoking a consumer, delivered via pluggable strategies (`watcherBridge` container, in-process `changeStreamWatcher`, `ledgerPoller` leases). The full event-driven design (reactive Model refresh, subscriptions in the Project DAG, Atlas Triggers as a delivery mechanism) is deferred - see ARCHITECTURE.md "Deferred work".
 
-- **InfraProvider / PulumiBackend** (scaffold): Located in `packages/infra/src/`. The shared provisioning engine — a Pulumi program-factory seam over provider-neutral resource specs, with Pulumi state stored in MongoDB (optionally a separate ops cluster). Suite-shared by design; must stay free of domain concepts.
+- **InfraProvider / PulumiBackend** (scaffold): Located in `packages/infra/src/`. The shared provisioning engine — a Pulumi seam over provider-neutral resource specs. The specs are an INTERNAL lowering IR, never a user-facing API (`@pulumi/cloud` was archived for making that mistake). Suite-shared by design; must stay free of domain concepts.
 
 ### Type System Architecture
 

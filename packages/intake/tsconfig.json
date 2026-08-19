@@ -10,8 +10,11 @@
   "include": ["src/**/*.ts"],
   "exclude": ["dist", "**/*.test.ts"],
   "references": [
-    { "path": "../core" },
-    { "path": "../infra" },
-    { "path": "../manifold" }
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../infra"
+    }
   ]
 }

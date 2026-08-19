@@ -1,21 +1,26 @@
 /**
- * Example: Realtime Stripe Replica (scaffold preview)
+ * Example: Stripe customer replica (scaffold preview)
  *
- * This example demonstrates the intended end-to-end flow:
+ * Demonstrates the intended end-to-end flow:
  * 1. A verified Stripe webhook lands raw envelopes in `stripe_events`
- * 2. A fetcher enriches customer events via the Stripe REST API into
- *    `stripe_customers` (natural-key upserts = effectively-once)
- * 3. The fetcher's output collection is a core Source, so a manifold
- *    Model consumes it directly - the ingestion-to-analytics DAG
+ * 2. One Intake replicates customers into `stripe_customers` by two routes
+ *    to the same documents:
+ *      - batch: list customers changed in a window, on two cadences plus a
+ *        weekly unbounded sweep that also detects deletions
+ *      - event: fetch exactly the customers a webhook implicated
+ *    Both upsert on the natural key with a monotonic version guard, so the
+ *    routes are idempotent individually AND against each other
+ * 3. The landing collection is a core Source, so a manifold Model consumes
+ *    it directly - the ingestion-to-analytics DAG
  *
- * Phase 0 note: declarations compile and the type flow is real, but
- * runtime methods (dev/deploy/replay) throw IntakeNotImplementedError
- * until later phases. See packages/intake/ARCHITECTURE.md.
+ * Phase 0 note: declarations compile and the type flow is real, but runtime
+ * methods (run/dev/deploy/replay) throw IntakeNotImplementedError until
+ * later phases. See packages/intake/ARCHITECTURE.md.
  */
 
 import { Model, Project } from "@pipesafe/manifold";
 import { secret } from "@pipesafe/infra";
-import { Webhook, Fetcher, Intake, verifiers } from "@pipesafe/intake";
+import { Webhook, Intake, IntakeStack, verifiers } from "@pipesafe/intake";
 
 // ============================================================================
 // Payload Schemas (typically sourced from Stripe's published typings)
@@ -34,6 +39,7 @@ type StripeCustomer = {
   name: string;
   livemode: boolean;
   created: number;
+  updated: number;
 };
 
 // ============================================================================
@@ -48,49 +54,97 @@ const stripe = new Webhook<"stripe", StripeEvent>({
 });
 
 // ============================================================================
-// Declare the Fetcher (enrich customer events via the Stripe REST API)
+// Declare the Intake (one entity, two routes, one landing collection)
 // ============================================================================
 
-const customers = new Fetcher({
+const customers = new Intake({
   name: "stripe_customers",
-  trigger: {
-    webhook: stripe,
-    filter: (envelope) => envelope.body.type.startsWith("customer."),
-  },
-  // A burst of N customer events referencing R distinct customers claims
-  // as one batch deduped to R keys - R fetches, not N
-  coalesce: { key: (envelope) => envelope.body.data.object.id },
-  handler: async function* ({ envelopes }, ctx) {
-    const apiKey = await ctx.getSecret(secret("STRIPE_API_KEY"));
-    for (const envelope of envelopes) {
+
+  // The reconciliation job. Same handler for backfill, incremental and
+  // sweep - only the window differs.
+  batch: {
+    handler: async function* (scope, ctx) {
+      const apiKey = await ctx.getSecret(secret("STRIPE_API_KEY"));
+      const params = new URLSearchParams({ limit: "100" });
+      if (scope.window?.from) {
+        params.set(
+          "created[gte]",
+          String(Math.floor(scope.window.from.getTime() / 1000))
+        );
+      }
       const res = await ctx.fetch(
-        `https://api.stripe.com/v1/customers/${envelope.body.data.object.id}`,
+        `https://api.stripe.com/v1/customers?${params}`,
         { headers: { Authorization: `Bearer ${apiKey}` } }
       );
-      yield (await res.json()) as StripeCustomer;
-    }
+      const page = (await res.json()) as { data: StripeCustomer[] };
+      for (const customer of page.data) {
+        yield customer;
+      }
+    },
+    schedules: [
+      { cron: "*/5 * * * *", lookback: "1h" }, // keep fresh
+      { cron: "0 3 * * *", lookback: "7d" }, // catch what the webhook missed
+      { cron: "0 4 * * 0" }, // unbounded: converges deletions
+    ],
+    overlap: "skip",
   },
-  output: { collection: "stripe_customers", key: "id", mode: "upsert" },
+
+  // Low-latency route. A burst of N customer events referencing R distinct
+  // customers is deduped to one run with R identifiers - R fetches, not N.
+  event: {
+    webhook: stripe,
+    filter: (envelope) => envelope.body.type.startsWith("customer."),
+    identifiers: (envelope) => [envelope.body.data.object.id],
+    handler: async function* (scope, ctx) {
+      const apiKey = await ctx.getSecret(secret("STRIPE_API_KEY"));
+      for (const id of scope.identifiers) {
+        const res = await ctx.fetch(
+          `https://api.stripe.com/v1/customers/${id}`,
+          { headers: { Authorization: `Bearer ${apiKey}` } }
+        );
+        if (res.status === 404) {
+          ctx.delete(id);
+          continue;
+        }
+        yield (await res.json()) as StripeCustomer;
+      }
+    },
+    concurrencyLimit: 4,
+  },
+
+  // This intake's SHARE of Stripe's account-wide budget, spent by both
+  // routes together.
+  rateLimit: { requestsPerSecond: 5 },
+
+  output: {
+    collection: "stripe_customers",
+    key: "id",
+    version: "updated",
+    deletes: { mode: "soft", sweep: true },
+  },
 });
 
 // ============================================================================
-// The Intake (deployment unit - this module is the bundling entry)
+// The IntakeStack (deployment unit - this module is the bundling entry)
 // ============================================================================
 
-export default new Intake({
+export default new IntakeStack({
   name: "acme",
   webhooks: [stripe],
-  fetchers: [customers],
+  intakes: [customers],
   mongoUri: secret("MONGODB_URI"),
 });
 
 // ============================================================================
-// Manifold side: Fetcher.output is a Source<StripeCustomer>
+// Manifold side: Intake.output is a Source<StripeCustomer & IntakeMeta>
 // ============================================================================
 
 const dimCustomers = new Model({
   name: "dim_customers",
   from: customers.output,
+  // Soft-deleted documents would be excluded here with
+  // `_deletedAt: { $exists: false }`; core's match narrowing currently
+  // resolves that clause to `never` (see ARCHITECTURE "Known limitations").
   pipeline: (p) => p.match({ livemode: true }),
   materialize: { type: "collection", mode: Model.Mode.Upsert },
 });
@@ -101,5 +155,5 @@ const project = new Project({
 });
 
 console.log("Webhook path:", stripe.getPath());
-console.log("Fetcher output collection:", customers.output.getCollectionName());
+console.log("Intake output collection:", customers.output.getCollectionName());
 console.log(project.plan().toString());

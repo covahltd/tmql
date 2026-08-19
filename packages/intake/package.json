@@ -1,7 +1,7 @@
 {
   "name": "@pipesafe/intake",
   "version": "0.1.0",
-  "description": "PipeSafe Intake - declarative webhook and REST ingestion into MongoDB, deployed to your cloud via @pipesafe/infra",
+  "description": "PipeSafe Intake - idempotent replication of third-party data into MongoDB, deployed to your cloud via @pipesafe/infra",
   "author": "Ryan Peggs & Tim Vyas",
   "license": "Elastic-2.0",
   "repository": {
@@ -13,7 +13,8 @@
     "mongodb",
     "ingestion",
     "webhook",
-    "change-streams",
+    "reconciliation",
+    "replication",
     "serverless",
     "etl",
     "pipesafe"
@@ -41,7 +42,6 @@
   "peerDependencies": {
     "@pipesafe/core": ">=1.1.0 <3.0.0",
     "@pipesafe/infra": ">=0.1.0 <3.0.0",
-    "@pipesafe/manifold": ">=1.0.0 <3.0.0",
     "mongodb": "^6.17.0"
   },
   "devDependencies": {

@@ -1,7 +1,9 @@
 /**
  * Type assertions pinning @pipesafe/intake's public generic flow:
- * TEvent flows webhook -> envelope -> trigger filter -> handler input;
- * TDoc flows handler -> output.key -> Fetcher.output Collection.
+ * TEvent flows webhook -> envelope -> event filter/identifiers; TDoc flows
+ * BOTH handlers -> output.key -> Intake.output Collection. The scope arms
+ * are pinned too: each handler sees only its own arm, so neither has to
+ * narrow something that cannot vary.
  *
  * Compile-time only - validated by `tsc --noEmit` (typecheck:packages).
  */
@@ -15,7 +17,9 @@ import type {
 } from "@pipesafe/core";
 import { secret } from "@pipesafe/infra";
 import { Webhook } from "./webhook/Webhook";
-import { Fetcher } from "./fetcher/Fetcher";
+import { Intake } from "./intake/Intake";
+import type { IntakeMeta } from "./intake/Intake";
+import type { BatchScope, EventScope, IntakeScope } from "./intake/Scope";
 import { verifiers } from "./verify/Verifier";
 import type { IntakeEnvelope } from "./envelope/Envelope";
 
@@ -33,7 +37,22 @@ interface StripeCustomer {
   id: string;
   email: string;
   livemode: boolean;
+  updated: number;
 }
+
+// ============================================================================
+// Scope: the handler arms are exactly the union members
+// ============================================================================
+
+type BatchArmTest = Assert<
+  Equal<BatchScope, { kind: "batch"; window?: { from?: Date; to?: Date } }>
+>;
+type EventArmTest = Assert<
+  Equal<EventScope, { kind: "event"; identifiers: string[] }>
+>;
+type ScopeIsExhaustiveTest = Assert<
+  Equal<IntakeScope, BatchScope | EventScope>
+>;
 
 // ============================================================================
 // Webhook: TEvent flows into the envelope collection
@@ -57,34 +76,67 @@ type EnvelopeBodyTest = Assert<
 >;
 
 // ============================================================================
-// Fetcher: TEvent in, TDoc out, natural key constrained to keyof TDoc
+// Intake: both routes yield the same TDoc; key/version constrained to it
 // ============================================================================
 
-const _customers = new Fetcher({
+const _customers = new Intake({
   name: "stripe_customers",
-  trigger: {
-    webhook: stripe,
-    // The filter sees the typed envelope
-    filter: (envelope) => envelope.body.type.startsWith("customer."),
-  },
-  // The coalesce key sees the typed envelope
-  coalesce: { key: (envelope) => envelope.body.data.object.id },
-  handler: async function* ({ envelopes }) {
-    // The handler sees the typed claimed batch (empty for schedule ticks)
-    for (const envelope of envelopes) {
+  batch: {
+    handler: async function* (scope) {
+      // The batch handler sees only the batch arm
+      const since: Date | undefined = scope.window?.from;
       yield {
-        id: envelope.body.data.object.id,
+        id: "cus_1",
         email: "a@b.co",
         livemode: true,
+        updated: since?.getTime() ?? 0,
       } as StripeCustomer;
-    }
+    },
+    schedules: [
+      { cron: "*/5 * * * *", lookback: "1h" },
+      { cron: "0 3 * * *", lookback: "7d" },
+      // No lookback: an unbounded sweep, which is what deletes.sweep needs
+      { cron: "0 4 * * 0" },
+    ],
+    overlap: "skip",
   },
-  output: { collection: "stripe_customers", key: "id", mode: "upsert" },
+  event: {
+    webhook: stripe,
+    // filter and identifiers see the typed envelope
+    filter: (envelope) => envelope.body.type.startsWith("customer."),
+    identifiers: (envelope) => [envelope.body.data.object.id],
+    handler: async function* (scope, ctx) {
+      // The event handler sees only the event arm
+      for (const id of scope.identifiers) {
+        if (id === "gone") {
+          ctx.delete(id);
+          continue;
+        }
+        yield {
+          id,
+          email: "a@b.co",
+          livemode: true,
+          updated: 1,
+        } as StripeCustomer;
+      }
+    },
+    concurrencyLimit: 4,
+  },
+  rateLimit: { requestsPerSecond: 3 },
+  output: {
+    collection: "stripe_customers",
+    key: "id",
+    version: "updated",
+    deletes: { mode: "soft", sweep: true },
+  },
 });
 
-// The output collection includes the writer-set `_id` (from output.key)
-type FetcherOutputTest = Assert<
-  Equal<typeof _customers.output, Collection<StripeCustomer & { _id: string }>>
+// The landing collection carries the writer-set meta fields
+type IntakeOutputTest = Assert<
+  Equal<typeof _customers.output, Collection<StripeCustomer & IntakeMeta>>
+>;
+type IntakeNameTest = Assert<
+  Equal<ReturnType<typeof _customers.getName>, "stripe_customers">
 >;
 
 // ============================================================================
@@ -95,23 +147,21 @@ type EventsAreASourceTest = Assert<
   IsAssignable<typeof stripe.events, Source<IntakeEnvelope<StripeEvent>>>
 >;
 type OutputIsASourceTest = Assert<
-  IsAssignable<
-    typeof _customers.output,
-    Source<StripeCustomer & { _id: string }>
-  >
+  IsAssignable<typeof _customers.output, Source<StripeCustomer & IntakeMeta>>
 >;
 type OutputInferenceTest = Assert<
-  Equal<
-    InferSourceType<typeof _customers.output>,
-    StripeCustomer & { _id: string }
-  >
+  Equal<InferSourceType<typeof _customers.output>, StripeCustomer & IntakeMeta>
 >;
 
 export type {
+  BatchArmTest,
+  EventArmTest,
+  ScopeIsExhaustiveTest,
   WebhookNameTest,
   WebhookEventsTest,
   EnvelopeBodyTest,
-  FetcherOutputTest,
+  IntakeOutputTest,
+  IntakeNameTest,
   EventsAreASourceTest,
   OutputIsASourceTest,
   OutputInferenceTest,

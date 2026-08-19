@@ -23,7 +23,6 @@
  */
 import { Collection } from "@pipesafe/core";
 import type { Document } from "@pipesafe/core";
-import type { SecretRef } from "@pipesafe/infra";
 import type { IntakeEnvelope } from "../envelope/Envelope";
 import type { Webhook } from "../webhook/Webhook";
 import { IntakeNotImplementedError } from "../errors";
@@ -54,7 +53,6 @@ export interface IntakeMeta {
 }
 
 export interface IntakeContext {
-  getSecret(ref: SecretRef): Promise<string>;
   /**
    * Wrapped fetch: retries with backoff on 429/5xx and honors the intake's
    * `rateLimit` so handlers stay simple.
@@ -83,9 +81,9 @@ export type IntakeHandler<TScope extends IntakeScope, TDoc extends Document> = (
 /** What a scheduled batch run covers. */
 export interface IntakeSchedule {
   /**
-   * 5-field cron expression, UTC. See infra's `ScheduleSpec.cron` for the
-   * portability contract (providers translate; both-day-fields expressions
-   * are rejected).
+   * 5-field cron expression, UTC. Declared here so your IaC can read it
+   * off `IntakeStack.manifest()` and create the trigger; intake does not
+   * create schedules itself.
    */
   cron: string;
   /**

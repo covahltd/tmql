@@ -13,9 +13,14 @@
   ],
   "exclude": ["**/dist/**/*", "**/node_modules/**", ".claude/worktrees/**"],
   "references": [
-    { "path": "./packages/core" },
-    { "path": "./packages/manifold" },
-    { "path": "./packages/infra" },
-    { "path": "./packages/intake" }
+    {
+      "path": "./packages/core"
+    },
+    {
+      "path": "./packages/manifold"
+    },
+    {
+      "path": "./packages/intake"
+    }
   ]
 }

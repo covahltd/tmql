@@ -15,7 +15,6 @@ import type {
   IsAssignable,
   Source,
 } from "@pipesafe/core";
-import { secret } from "@pipesafe/infra";
 import { Webhook } from "./webhook/Webhook";
 import { Intake } from "./intake/Intake";
 import type { IntakeMeta } from "./intake/Intake";
@@ -61,7 +60,7 @@ type ScopeIsExhaustiveTest = Assert<
 const stripe = new Webhook<"stripe", StripeEvent>({
   name: "stripe",
   path: "/webhooks/stripe",
-  verify: verifiers.stripe(secret("STRIPE_SIGNING_SECRET")),
+  verify: verifiers.stripe("whsec_test"),
   eventId: (body) => body.id,
 });
 

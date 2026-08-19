@@ -14,12 +14,14 @@
  *    it directly - the ingestion-to-analytics DAG
  *
  * Phase 0 note: declarations compile and the type flow is real, but runtime
- * methods (run/dev/deploy/replay) throw IntakeNotImplementedError until
- * later phases. See packages/intake/ARCHITECTURE.md.
+ * methods (run/dev/replay) and the handler factories throw
+ * IntakeNotImplementedError until later phases. Intake provisions nothing:
+ * `stack.manifest()` says what to create and the handlers in
+ * `@pipesafe/intake` are what your resources invoke.
+ * See packages/intake/ARCHITECTURE.md.
  */
 
 import { Model, Project } from "@pipesafe/manifold";
-import { secret } from "@pipesafe/infra";
 import { Webhook, Intake, IntakeStack, verifiers } from "@pipesafe/intake";
 
 // ============================================================================
@@ -49,7 +51,8 @@ type StripeCustomer = {
 const stripe = new Webhook<"stripe", StripeEvent>({
   name: "stripe",
   path: "/webhooks/stripe",
-  verify: verifiers.stripe(secret("STRIPE_SIGNING_SECRET")),
+  // Your IaC provisions and injects the secret; intake just reads it.
+  verify: verifiers.stripe(process.env["STRIPE_SIGNING_SECRET"] ?? ""),
   eventId: (body) => body.id,
 });
 
@@ -64,7 +67,7 @@ const customers = new Intake({
   // sweep - only the window differs.
   batch: {
     handler: async function* (scope, ctx) {
-      const apiKey = await ctx.getSecret(secret("STRIPE_API_KEY"));
+      const apiKey = process.env["STRIPE_API_KEY"] ?? "";
       const params = new URLSearchParams({ limit: "100" });
       if (scope.window?.from) {
         params.set(
@@ -96,7 +99,7 @@ const customers = new Intake({
     filter: (envelope) => envelope.body.type.startsWith("customer."),
     identifiers: (envelope) => [envelope.body.data.object.id],
     handler: async function* (scope, ctx) {
-      const apiKey = await ctx.getSecret(secret("STRIPE_API_KEY"));
+      const apiKey = process.env["STRIPE_API_KEY"] ?? "";
       for (const id of scope.identifiers) {
         const res = await ctx.fetch(
           `https://api.stripe.com/v1/customers/${id}`,
@@ -125,14 +128,13 @@ const customers = new Intake({
 });
 
 // ============================================================================
-// The IntakeStack (deployment unit - this module is the bundling entry)
+// The IntakeStack (the declaration your own IaC wires up)
 // ============================================================================
 
 export default new IntakeStack({
   name: "acme",
   webhooks: [stripe],
   intakes: [customers],
-  mongoUri: secret("MONGODB_URI"),
 });
 
 // ============================================================================

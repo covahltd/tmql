@@ -2,18 +2,26 @@
  * Verifier - pluggable webhook signature verification
  *
  * Verification runs in the gateway against the EXACT raw request bytes
- * (HMAC schemes break on re-serialized JSON). Schemes declare the secrets
- * they need as SecretRefs so deploys know what to provision; values are
- * resolved lazily at runtime.
+ * (HMAC schemes break on re-serialized JSON).
+ *
+ * Secrets are supplied by the caller as VALUES, not as references intake
+ * resolves. Your IaC already provisions secrets; intake reads what it is
+ * given. Pass `process.env.X!` for the common case, or a thunk when the
+ * value must be fetched (and re-fetched, on rotation) at runtime.
  */
-import type { SecretRef } from "@pipesafe/infra";
 import { IntakeNotImplementedError } from "../errors";
+
+/**
+ * A secret value, or a resolver for one. A thunk is called per
+ * verification, so rotating secrets work as long as the resolver caches to
+ * taste - intake does no caching of its own.
+ */
+export type SecretValue = string | (() => string | Promise<string>);
 
 export interface VerifyContext {
   /** Exact request body bytes as received. */
   rawBody: string;
   headers: Readonly<Record<string, string>>;
-  getSecret(ref: SecretRef): Promise<string>;
 }
 
 /**
@@ -31,8 +39,6 @@ export interface VerifyResult {
 export interface Verifier {
   /** e.g. "stripe", "hmac-sha256", "none", or a custom scheme name. */
   readonly scheme: string;
-  /** Declared so deploys know which secrets to provision. */
-  readonly secretRefs: readonly SecretRef[];
   verify(ctx: VerifyContext): Promise<VerifyResult>;
 }
 
@@ -49,43 +55,30 @@ const notImplemented = (scheme: string): Verifier["verify"] => {
 export const verifiers = {
   /** Stripe-Signature v1 HMAC with timestamp tolerance. */
   stripe(
-    signingSecret: SecretRef,
+    _signingSecret: SecretValue,
     _opts?: { toleranceSeconds?: number }
   ): Verifier {
-    return {
-      scheme: "stripe",
-      secretRefs: [signingSecret],
-      verify: notImplemented("stripe"),
-    };
+    return { scheme: "stripe", verify: notImplemented("stripe") };
   },
 
   /** Generic HMAC-SHA256 over the raw body, compared to a header value. */
   hmacSha256(
-    secret: SecretRef,
+    _secret: SecretValue,
     _opts: { header: string; encoding?: "hex" | "base64"; prefix?: string }
   ): Verifier {
-    return {
-      scheme: "hmac-sha256",
-      secretRefs: [secret],
-      verify: notImplemented("hmacSha256"),
-    };
+    return { scheme: "hmac-sha256", verify: notImplemented("hmacSha256") };
   },
 
   /** No verification - dev only. Envelopes store `verified: false`. */
   none(): Verifier {
     return {
       scheme: "none",
-      secretRefs: [],
       verify: () => Promise.resolve({ accepted: true, verified: false }),
     };
   },
 
   /** Custom scheme escape hatch. */
-  custom(
-    scheme: string,
-    secretRefs: readonly SecretRef[],
-    verify: Verifier["verify"]
-  ): Verifier {
-    return { scheme, secretRefs, verify };
+  custom(scheme: string, verify: Verifier["verify"]): Verifier {
+    return { scheme, verify };
   },
 };

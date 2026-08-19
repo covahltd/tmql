@@ -1,4 +1,4 @@
-# @pipesafe/intake + @pipesafe/infra — Architecture
+# @pipesafe/intake — Architecture
 
 Declarative replication of third-party data into MongoDB: describe an
 external entity in TypeScript and intake keeps a landing collection
@@ -9,9 +9,10 @@ The responsibility split across the suite:
 
 - **`@pipesafe/intake`** (ELv2) — the ingestion domain, and ONLY that:
   getting external data into landing collections and keeping it converged.
-  `Intake`, `Webhook`, the `IntakeEnvelope` ledger, verifiers, and the
-  `IntakeStack` deployment unit. Intake's job ends when a document lands; it
-  does not own reactions to those documents.
+  `Intake`, `Webhook`, the `IntakeEnvelope` ledger, verifiers, the runtime
+  handlers, and the `IntakeStack` declaration. Intake's job ends when a
+  document lands; it does not own reactions to those documents, and it does
+  not own infrastructure.
 - **`@pipesafe/manifold`** (ELv2) — transformations, in both execution
   modes: batch (`Project.run`, pull-based, today) and event-driven
   (change-stream subscriptions — scaffold in `src/events/`). Manifold and
@@ -19,14 +20,12 @@ The responsibility split across the suite:
   operational data, other ETL tools' landing collections, CDC replicas,
   other services' databases, and manifold's own model outputs. Intake is
   merely one producer among many, and intake does NOT depend on manifold.
-- **`@pipesafe/infra`** (ELv2) — the shared infrastructure engine: the
-  Pulumi component/program seam and `SecretRef`s. Intake deploys ingestion
-  infrastructure through it today; manifold deploys scheduled/reactive
-  transformation jobs through it later. Nothing in infra may reference
-  ingestion (or any other domain) concepts — that boundary is a review gate.
+- **Your infrastructure-as-code** — whatever you already use. Intake ships
+  no provider, no state backend and no secret store, because you already
+  have all three and they are already in your review process. See
+  [Deployment](#deployment-your-iac-our-handlers).
 
-Dependency direction: intake peers on core and infra; manifold peers on core
-only; infra peers on core only.
+Dependency direction: intake peers on core only, as does manifold.
 
 Status: **Phase 0** — this document plus type-level scaffolds. No runtime
 yet. See the [roadmap](#roadmap) for the path to a working MVP.
@@ -58,10 +57,13 @@ yet. See the [roadmap](#roadmap) for the path to a working MVP.
    with idempotency at both write points — envelope `_id` dedupe at the
    gateway, natural-key upserts guarded by a monotonic version at the
    writer — for **effectively-once processing**.
-6. **Declarative units, one deployment unit** (manifold symmetry: `Model` +
-   `Project`). `Webhook` and `Intake` do no I/O; `IntakeStack` validates,
-   runs locally, and deploys.
-7. **Suite client conventions.** Runtime pieces resolve the client as
+6. **Declarative units, one declaration** (manifold symmetry: `Model` +
+   `Project`). `Webhook` and `Intake` do no I/O; `IntakeStack` collects
+   them, validates, and reports what infrastructure is required.
+7. **Intake is a library, not a deployment tool.** It provisions nothing,
+   stores no deploy state, and resolves no secrets. Adopting it must not
+   mean adopting a second IaC.
+8. **Suite client conventions.** Runtime pieces resolve the client as
    `options.client ?? pipesafe.client` (throw if neither) and call
    `tagClient()`, exactly like `Collection`, `Database`, and `Project`.
 
@@ -188,8 +190,9 @@ persists the raw envelope. Exposes
 Verification is a pluggable `Verifier` scheme: built-ins `verifiers.stripe()`
 (Stripe-Signature v1 HMAC + timestamp tolerance), `verifiers.hmacSha256()`,
 `verifiers.none()` (dev only; stores `verified: false`), and
-`verifiers.custom()`. Schemes declare their secrets as `SecretRef`s so
-deploys know what to provision.
+`verifiers.custom()`. Schemes take a `SecretValue` — a string, or a thunk
+for values fetched at runtime — so the secret comes from wherever your IaC
+put it.
 
 ### `IntakeEnvelope<TEvent>` — the ledger
 
@@ -209,17 +212,15 @@ Only an allowlisted header subset is persisted (never auth headers). Replays
 and audits read this collection; it is the single source of truth for "what
 arrived".
 
-### `IntakeStack` — the deployment unit
+### `IntakeStack` — the declaration
 
-Constructed with `{ name, webhooks, intakes, mongoUri, database?, dispatch? }`;
+Constructed with `{ name, webhooks, intakes, database?, dispatch? }`;
 validates immediately (unique names/paths/output collections, event routes
 referencing registered webhooks); immutable afterwards. Methods:
-`validate()`, `dev()`, `replay()`, `plan()` / `deploy()` / `status()` /
-`teardown()`.
+`validate()`, `manifest()`, `dev()`, `replay()`, `status()`.
 
-The name mirrors the Pulumi `ComponentResource` this lowers to, so the same
-stack is either deployed by pipesafe or instantiated inside a user's own
-Pulumi program (see [Provisioning](#provisioning-three-layers-pipesafeinfra)).
+It collects the units and reports what infrastructure they require; it does
+not create any. See [Deployment](#deployment-your-iac-our-handlers).
 
 ## Delivery
 
@@ -232,8 +233,8 @@ Pulumi program (see [Provisioning](#provisioning-three-layers-pipesafeinfra)).
      lease expiry is the visibility timeout. A claim naturally scoops up
      everything accumulated since the last run, which is exactly the shape
      identifier coalescing wants and the natural dedupe point. It also keeps
-     a deployment to functions, schedules and secrets: the resource kinds
-     that genuinely port across clouds.
+     a deployment to functions and cron triggers: nothing exotic for your
+     IaC to express, on any cloud.
    - **`changeStream`**: lower idle latency for low-volume,
      latency-sensitive sources, at the cost of an always-on watcher (and
      therefore a container). Powers `dev()` in-process.
@@ -257,62 +258,72 @@ test fixture `useMemoryMongo` already runs one); async-invoke ordering is not
 guaranteed (fine — the ledger is authoritative and the version guard
 protects the writer).
 
-## Provisioning: three layers (`@pipesafe/infra`)
+## Deployment: your IaC, our handlers
 
-Most adopters already have an IaC tool and a review process around it. "Any
-cloud, but our deploy engine" is still lock-in, so the engine is the
-outermost layer, not the only one:
+Intake provisions nothing. Most adopters already have an IaC tool, a state
+backend, a secret store and a review process wrapped around all three;
+"any cloud, but our deploy engine" is still lock-in, and the constraint that
+actually bites is the IaC tool, not the cloud. So the contract is two
+pieces of plain data and code:
 
-- **Layer 0 — runtime handlers, IaC-free.** Plain factories over an
-  `IntakeStack`: gateway, runner, sweeper, watcher. No Pulumi, no cloud SDK.
-  Anyone on Terraform, CDK, SST, Serverless Framework, a Kubernetes CronJob,
-  or one long-running Node process can adopt intake by wiring these and a
-  Mongo URI. This layer is also what makes the runtime testable without any
-  provisioning at all.
-- **Layer 1 — a Pulumi `ComponentResource`**, instantiated in the USER's
-  program: their state backend, their stack config, their explicit provider,
-  their VPC, their tags. Consumers must be able to reach the raw resources —
-  `.nodes` for direct access, per-resource `transform` callbacks in the
-  component args, and Pulumi's `registerResourceTransform` for the rest.
-  Component args must cover `provider`/`providers` (multi-account,
-  multi-region), `vpc`/`subnets`/`securityGroups`, a bring-your-own `role`
-  (many orgs forbid IaC creating IAM), `tags` and `logRetention`.
-- **Layer 2 — `IntakeStack.deploy()`**, a thin Pulumi Automation API wrapper
-  over Layer 1 for users who want batteries included. It is a consumer of
-  the component, not a parallel implementation.
+**1. Runtime handlers** (`@pipesafe/intake`) — plain functions over an
+`IntakeStack`, with a framework-neutral request shape you adapt in a few
+lines:
 
-**The neutral resource spec is an internal IR, never a user-facing API.**
-Pulumi tried the cross-cloud abstraction as `@pulumi/cloud` and archived it
-in December 2024: users "were broadly not satisfied", and cloud-neutrality
-"led to severe limitations for users working in AWS". The kinds
-(`function`, `httpEndpoint`, `containerService`, `schedule`, `secret`) are
-almost exactly that surface, so two rules keep the IR from repeating the
-mistake: it never appears in a user's type signature, and it is frozen by
-intake's needs rather than grown toward cloud parity.
+| Handler                 | Invoked by                                       | Does                                                                 |
+| ----------------------- | ------------------------------------------------ | -------------------------------------------------------------------- |
+| `createGatewayHandler`  | your HTTP route(s)                               | verify signature, insert envelope, ack. Nothing else on the hot path |
+| `createRunHandler`      | your batch cron triggers, or you, for a backfill | run one intake over one scope                                        |
+| `createDispatchHandler` | your dispatch cron (or the watcher worker)       | claim envelopes, coalesce identifiers, run event routes              |
+| `createSweeperHandler`  | your sweeper cron                                | re-drive failed envelopes with backoff, reap stuck ones              |
 
-With `poll` dispatch, an intake deployment uses only `function`,
-`httpEndpoint`, `schedule` and `secret` — all four have honest equivalents
-on AWS, GCP, Azure and Cloudflare. `containerService` is the leaky kind (ECS
-Fargate vs Cloud Run vs Container Apps, with no Workers equivalent at all)
-and is required only by `changeStream` dispatch, which is why polling is the
-default.
+They take `{ client?, database?, logger? }` and nothing else. No provider,
+no bundler, no deployment step.
 
-**Deploy state is not pipesafe's business.** A user deploying from their own
-program already has a state backend. Runtime state — the envelope ledger,
-leases, resume tokens — stays in MongoDB unconditionally; that is the
-opinionated part and it is orthogonal to who owns the deploy. Layer 2 needs
-somewhere to keep a stack checkpoint and a deploy lock, which is what
-`StateStoreOptions` is for; it is an option of one path, not a principle.
+**2. `IntakeStack.manifest()`** — what needs to exist, as data:
 
-**Secrets** — `secret(name)` returns a `SecretRef` (name only). Values come
-from deploy options or `process.env` at deploy time and land in the provider
-secret store; runtime resolves lazily and caches warm.
+```ts
+{
+  name: string;
+  endpoints: { webhook: string; path: `/${string}` }[];
+  schedules: (
+    | { kind: "batch"; intake: string; cron: string; lookback?: Duration }
+    | { kind: "dispatch"; cron: string }
+    | { kind: "sweeper"; cron: string }
+  )[];
+  workers: { kind: "watcher" }[];          // only under changeStream dispatch
+  collections: { name: string; role: "envelopes" | "landing" }[];
+}
+```
 
-**Bundling** — the module that default-exports the `IntakeStack` is the
-deployment unit: `deploy()` imports it to compute the plan, then
-esbuild-bundles it with thin runtime shims that route work by name.
-Constraints: module-scope closures only; no inline secrets (deploy-time scan
-warns); import-side-effect-safe.
+Read it in a Pulumi program, generate Terraform from it, or ignore it and
+hand-write four Lambdas and three EventBridge rules. It is a description,
+not a plan to apply — there is no state, no diff, no lock, and nothing for
+intake to own between deploys.
+
+**Secrets are yours.** Verifiers take a `SecretValue` — a string, or a
+thunk when the value must be fetched (and re-fetched on rotation) at
+runtime — so `process.env.STRIPE_SIGNING_SECRET` is the common case and
+Vault/Secrets Manager is a one-line resolver. Handlers read whatever your
+IaC injected. Intake has no secret-reference type, no secret store and no
+resolution step, because every one of those existed only to serve a
+provisioning engine it no longer has.
+
+**Under `poll` dispatch the whole deployment is functions plus cron
+triggers plus a MongoDB connection** — no always-on process, nothing exotic
+to translate per cloud. `changeStream` dispatch adds one long-lived watcher
+worker in exchange for lower idle latency; it is opt-in for that reason.
+
+**On not building a cross-cloud abstraction.** Pulumi shipped exactly that
+as `@pulumi/cloud` and archived it in December 2024: users "were broadly
+not satisfied", and cloud-neutrality "led to severe limitations for users
+working in AWS". A provider-neutral resource vocabulary (`function`,
+`httpEndpoint`, `schedule`, `secret`) is the surface that failed, and this
+design avoids it by not having a vocabulary at all — the manifest names
+intake's own concepts and lets your IaC decide what they map to. If an
+optional Pulumi `ComponentResource` is ever wanted for users with no IaC,
+it belongs in a separate package built ON these handlers, never underneath
+them.
 
 ## The Stripe example, end to end
 
@@ -323,7 +334,7 @@ compiled version. In outline:
 const stripe = new Webhook<"stripe", StripeEvent>({
   name: "stripe",
   path: "/webhooks/stripe",
-  verify: verifiers.stripe(secret("STRIPE_SIGNING_SECRET")),
+  verify: verifiers.stripe(process.env.STRIPE_SIGNING_SECRET!),
   eventId: (body) => body.id,
 });
 
@@ -360,7 +371,6 @@ export default new IntakeStack({
   name: "acme",
   webhooks: [stripe],
   intakes: [customers],
-  mongoUri: secret("MONGODB_URI"),
 });
 
 // manifold side: Intake.output is a Source<StripeCustomer & IntakeMeta>
@@ -390,13 +400,13 @@ per repo convention.
 
 ## Roadmap
 
-| Phase                             | Scope                                                                                                                                                                                                         | Acceptance                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **0 (this PR)**                   | infra + intake scaffolds, this document                                                                                                                                                                       | build, lint, `typecheck:packages` green                                                                                                                                                                                                                                                                                                                                                                                                |
-| **1 — local runtime**             | envelope ledger ops, verifier implementations, gateway/runner code paths, scope resolution (lookback → dates), the idempotent writer (natural-key upsert + version guard + `ctx.delete`), `dev()`, `replay()` | Stripe-shaped integration test on `useMemoryMongo`: signed POST → envelope → dispatch → event run (mock API) → typed upsert; duplicate-delivery test proves effectively-once; coalescing test proves N envelopes for R resources produce ONE run with R identifiers; out-of-order test proves the version guard rejects a stale write; scope-equivalence test proves a batch window run and an event run converge on the same document |
-| **2 — cadence & convergence**     | schedule firing, `overlap` leases, sweeper logic, delete application (explicit + `sweep`)                                                                                                                     | kill-runner-mid-flight test shows lease-expiry redelivery without double-processing; sweep test proves a document absent from an unbounded run is soft-deleted and a bounded run never sweeps                                                                                                                                                                                                                                          |
-| **3 — Pulumi + AWS (MVP deploy)** | infra: Layer 0 runtime handler factories, the AWS `ComponentResource` (Layer 1) with transforms/`nodes`/BYO provider+VPC+role, then `deploy()` as the Automation API wrapper (Layer 2); esbuild bundling      | Stripe example deploys to clean AWS from scratch against ANY replica-set MongoDB; the SAME component deploys from a user's own Pulumi program with their own state backend; live event lands; `plan()` on unchanged config is all no-ops; `teardown()` leaves nothing; **no ingestion concepts in infra's API**                                                                                                                        |
-| **4 — hardening**                 | `status()` with ledger stats, `ctx.paginate`, `ctx.checkpoint` (mid-run resumption as a pure optimization), DLQ ops tooling, API Gateway/custom domains                                                       | a 500-page backfill resumes after a forced kill without re-reading completed pages; ops runbook                                                                                                                                                                                                                                                                                                                                        |
+| Phase                         | Scope                                                                                                                                                                                                         | Acceptance                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **0 (this PR)**               | intake scaffolds, this document                                                                                                                                                                               | build, lint, `typecheck:packages` green                                                                                                                                                                                                                                                                                                                                                                                                |
+| **1 — local runtime**         | envelope ledger ops, verifier implementations, gateway/runner code paths, scope resolution (lookback → dates), the idempotent writer (natural-key upsert + version guard + `ctx.delete`), `dev()`, `replay()` | Stripe-shaped integration test on `useMemoryMongo`: signed POST → envelope → dispatch → event run (mock API) → typed upsert; duplicate-delivery test proves effectively-once; coalescing test proves N envelopes for R resources produce ONE run with R identifiers; out-of-order test proves the version guard rejects a stale write; scope-equivalence test proves a batch window run and an event run converge on the same document |
+| **2 — cadence & convergence** | schedule firing, `overlap` leases, sweeper logic, delete application (explicit + `sweep`)                                                                                                                     | kill-runner-mid-flight test shows lease-expiry redelivery without double-processing; sweep test proves a document absent from an unbounded run is soft-deleted and a bounded run never sweeps                                                                                                                                                                                                                                          |
+| **3 — deployable**            | runtime handler factories (gateway/run/dispatch/sweeper) over the framework-neutral request shape, `manifest()`, a worked reference deployment in one IaC tool as documentation only                          | the Stripe example runs end to end on infrastructure declared entirely outside this repo: signed request lands, crons drive batch/dispatch/sweeper, nothing in `@pipesafe/intake` imports a cloud SDK or an IaC library                                                                                                                                                                                                                |
+| **4 — hardening**             | `status()` with ledger stats, `ctx.paginate`, `ctx.checkpoint` (mid-run resumption as a pure optimization), DLQ ops tooling, API Gateway/custom domains                                                       | a 500-page backfill resumes after a forced kill without re-reading completed pages; ops runbook                                                                                                                                                                                                                                                                                                                                        |
 
 ## Deferred work
 
@@ -431,8 +441,11 @@ per repo convention.
   API, or a `Webhook` accepting its outbound webhooks, gives intake that
   catalog without building it. Per-customer OAuth is explicitly NOT intake's
   job.
-- **Manifold on infra** — scheduled materialization deployment; the step
-  that realizes the single ingestion→analytics DAG.
+- **An optional Pulumi component** for users with no IaC of their own. It
+  would be a separate package consuming the runtime handlers, never a
+  dependency underneath them — the direction matters, because the moment
+  intake depends on it the secret-reference and deploy-state types come
+  back.
 
 ## Risks
 
@@ -449,8 +462,6 @@ per repo convention.
 - **Unbounded sweeps are expensive.** A weekly full sweep of a large entity
   can dwarf every other run combined. Document the cost and make the cadence
   a deliberate choice.
-- **`pulumi` CLI** is a deploy-time prerequisite for Layer 2 (not a runtime
-  one, and not needed at all for Layer 0 or Layer 1).
 - **Mongo access from FaaS**: Atlas IP allowlisting (MVP: documented
   tradeoffs; PrivateLink later) and connection caps under concurrency —
   small `maxPoolSize`, reserved-concurrency guidance. `concurrencyLimit` is
@@ -459,5 +470,9 @@ per repo convention.
   bundles small, nothing but the insert on the hot path.
 - **Payload limits**: ~6 MB sync function request; 16 MB Mongo document
   ceiling (GridFS escape hatch out of MVP).
-- **Credential scoping**: ship copy-pasteable least-privilege IAM policies
-  (deployer + runtime), name-scoped to `pipesafe-intake-*`.
+- **Documentation carries the weight that a deploy engine used to.** With
+  no provisioning of our own, "wire four handlers and three crons correctly"
+  becomes a docs problem — an incomplete wiring (a missing sweeper trigger,
+  say) fails quietly by degrading convergence rather than erroring.
+  `validate()` and `manifest()` should make the required set explicit, and
+  `status()` should make an unhealthy one visible.

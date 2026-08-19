@@ -3,14 +3,7 @@
   "changelog": "@changesets/cli/changelog",
   "commit": false,
   "fixed": [],
-  "linked": [
-    [
-      "@pipesafe/core",
-      "@pipesafe/manifold",
-      "@pipesafe/infra",
-      "@pipesafe/intake"
-    ]
-  ],
+  "linked": [["@pipesafe/core", "@pipesafe/manifold", "@pipesafe/intake"]],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",

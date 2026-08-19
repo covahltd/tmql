@@ -1,72 +1,76 @@
 /**
- * IntakeStack - the deployment unit
+ * IntakeStack - the declaration your infrastructure wires up
  *
  * Analogous to manifold's Project: constructed with the declarative units
- * (Webhooks and Intakes) and immutable afterwards. Owns local execution
- * (dev/replay) and delegates provisioning to @pipesafe/infra's engine
- * (plan/deploy/status/teardown), composing the ingestion-specific resource
- * specs - gateway, runners, sweeper - for the chosen provider. The name
- * mirrors the Pulumi ComponentResource this lowers to, so the same stack is
- * either deployed by pipesafe or instantiated inside a user's own program.
+ * (Webhooks and Intakes) and immutable afterwards.
  *
- * Construction-time validation (like Project's) lands in Phase 1; until
- * then validate() throws.
+ * It does NOT provision anything. Intake ships runtime handlers
+ * (src/runtime/handlers.ts) and a `manifest()` describing what needs to
+ * exist - HTTP routes and cron triggers, each naming the handler it
+ * invokes. Your existing IaC creates those resources and injects secrets;
+ * intake is a library that runs inside them, not a deployment tool.
  *
  * Client resolution follows the suite pattern: `options.client ??
  * pipesafe.client`, throw if neither, `tagClient()`.
  */
 import type { MongoClient } from "mongodb";
-import type {
-  InfraProvider,
-  SecretRef,
-  StateStoreOptions,
-} from "@pipesafe/infra";
 import type { EnvelopeStatus } from "../envelope/Envelope";
 import type { Intake } from "../intake/Intake";
+import type { Duration } from "../intake/Scope";
 import type { Webhook } from "../webhook/Webhook";
 import { IntakeNotImplementedError } from "../errors";
 
 /**
  * How landed envelopes become event runs.
  *
- * Polling is the default and the primary strategy: a claim naturally scoops
- * up everything accumulated since the last run, which is exactly the shape
- * identifier coalescing wants, and it keeps a deployment to functions,
- * schedules and secrets - the resource kinds that port across clouds. A
- * change stream trades that portability (it needs an always-on watcher) for
- * lower idle latency on low-volume, latency-sensitive sources.
+ * Polling is the default: a cron trigger your IaC already knows how to
+ * create invokes the dispatch handler, which claims everything accumulated
+ * since the last run - exactly the shape identifier coalescing wants, and
+ * no always-on process. `changeStream` trades that for lower idle latency
+ * on low-volume, latency-sensitive sources, at the cost of running the
+ * watcher as a long-lived worker.
  */
 export type EventDispatch =
-  | { strategy: "poll"; intervalSeconds?: number }
+  | { strategy: "poll"; cron?: string }
   | { strategy: "changeStream" };
 
 export interface IntakeStackConfig {
-  /** Deployment namespace, e.g. "acme-prod". */
+  /** Namespace for collections and manifest entries, e.g. "acme-prod". */
   name: string;
   /* `any` mirrors manifold's Project: Collection is invariant in its doc
      type, so concretely-typed units don't assign to Document-typed ones. */
   webhooks: Webhook<string, any>[];
   intakes: Intake<string, any, any>[];
-  /** What the deployed functions use to reach MongoDB. */
-  mongoUri: SecretRef;
   database?: string;
   /** Defaults to `{ strategy: "poll" }`. */
   dispatch?: EventDispatch;
 }
 
-export interface DeployOptions {
-  provider: InfraProvider;
-  /**
-   * Path to the module that default-exports this IntakeStack - the
-   * bundling unit shipped to the cloud functions.
-   */
-  entry: string;
-  /** State-store client; falls back to `pipesafe.client`. */
-  client?: MongoClient;
-  /** Deploy state and locks - may target a different cluster. */
-  stateStore?: StateStoreOptions;
-  /** Values for declared SecretRefs (else read from process.env). */
-  secrets?: Record<string, string>;
+/** An HTTP route to create, invoking the gateway handler. */
+export interface IntakeManifestEndpoint {
+  webhook: string;
+  path: `/${string}`;
+}
+
+/** A cron trigger to create, invoking the named handler. */
+export type IntakeManifestSchedule =
+  | { kind: "batch"; intake: string; cron: string; lookback?: Duration }
+  | { kind: "dispatch"; cron: string }
+  | { kind: "sweeper"; cron: string };
+
+/**
+ * Everything your IaC needs to create, as plain data. No provider, no
+ * resource graph, no state - read it and declare the equivalent in
+ * whatever you already use.
+ */
+export interface IntakeManifest {
+  name: string;
+  endpoints: IntakeManifestEndpoint[];
+  schedules: IntakeManifestSchedule[];
+  /** Long-running processes required (only under `changeStream`). */
+  workers: { kind: "watcher" }[];
+  /** Collections intake reads and writes, for index/permission setup. */
+  collections: { name: string; role: "envelopes" | "landing" }[];
 }
 
 export interface IntakeValidationError {
@@ -108,23 +112,10 @@ export interface ReplayResult {
   failed: number;
 }
 
-export interface DeployPlan {
-  creates: string[];
-  updates: string[];
-  deletes: string[];
-  unchanged: string[];
-}
-
-export interface DeployResult {
-  plan: DeployPlan;
-  /** e.g. webhook URLs keyed by webhook name. */
-  endpoints: Record<string, string>;
-}
-
+/** Operational state read from the ledger - nothing about deployments. */
 export interface IntakeStackStatus {
-  deployed: boolean;
-  endpoints: Record<string, string>;
   envelopes: Partial<Record<EnvelopeStatus, number>>;
+  intakes: Record<string, { lastRunAt?: Date; landedDocuments: number }>;
 }
 
 export class IntakeStack {
@@ -146,6 +137,10 @@ export class IntakeStack {
     return [...this.config.intakes];
   }
 
+  getDispatch(): EventDispatch {
+    return this.config.dispatch ?? { strategy: "poll" };
+  }
+
   /**
    * Unique names, paths and output collections; every event route
    * references a webhook registered on this stack.
@@ -154,9 +149,14 @@ export class IntakeStack {
     throw new IntakeNotImplementedError("IntakeStack.validate");
   }
 
+  /** What your IaC needs to create. Pure derivation - no I/O. */
+  manifest(): IntakeManifest {
+    throw new IntakeNotImplementedError("IntakeStack.manifest");
+  }
+
   /**
-   * Local dev server: a real HTTP endpoint per webhook path, envelope
-   * dispatch, and the same gateway/runner code paths as the cloud.
+   * Local dev server: a real HTTP endpoint per webhook path, in-process
+   * dispatch, and the same handler code paths that run in production.
    */
   dev(_options?: DevOptions): Promise<LocalIntakeServer> {
     throw new IntakeNotImplementedError("IntakeStack.dev");
@@ -167,22 +167,8 @@ export class IntakeStack {
     throw new IntakeNotImplementedError("IntakeStack.replay");
   }
 
-  /** Diff desired infrastructure against recorded state - no changes. */
-  plan(_options: DeployOptions): Promise<DeployPlan> {
-    throw new IntakeNotImplementedError("IntakeStack.plan");
-  }
-
-  /** Provision/update cloud resources to match this declaration. */
-  deploy(_options: DeployOptions): Promise<DeployResult> {
-    throw new IntakeNotImplementedError("IntakeStack.deploy");
-  }
-
-  status(_options: DeployOptions): Promise<IntakeStackStatus> {
+  /** Ledger and landing-collection stats. */
+  status(_options?: { client?: MongoClient }): Promise<IntakeStackStatus> {
     throw new IntakeNotImplementedError("IntakeStack.status");
-  }
-
-  /** Destroy cloud resources. Landing collections are never touched. */
-  teardown(_options: DeployOptions): Promise<void> {
-    throw new IntakeNotImplementedError("IntakeStack.teardown");
   }
 }

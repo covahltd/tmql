@@ -5,7 +5,7 @@
  * Webhooks (verified endpoints landing raw envelopes) and Intakes (one
  * idempotent replication unit per external entity, with a scheduled batch
  * route and an optional webhook-driven event route), then run them locally
- * or deploy the serverless infrastructure via @pipesafe/infra.
+ * or wire the runtime handlers into infrastructure you already manage.
  *
  * Because an intake run is idempotent it is a reconciliation job by nature:
  * backfill, incremental sync and gap recovery are the same handler invoked
@@ -19,8 +19,16 @@ export { Webhook } from "./webhook/Webhook";
 export { Intake } from "./intake/Intake";
 export { verifiers } from "./verify/Verifier";
 
-// Deployment unit
+// The declaration your infrastructure wires up
 export { IntakeStack } from "./stack/IntakeStack";
+
+// Runtime entry points - wire these into your own IaC
+export {
+  createGatewayHandler,
+  createRunHandler,
+  createDispatchHandler,
+  createSweeperHandler,
+} from "./runtime/handlers";
 
 // Errors
 export { IntakeNotImplementedError } from "./errors";
@@ -52,13 +60,25 @@ export type {
   IntakeLogger,
   OverlapPolicy,
 } from "./intake/Intake";
-export type { Verifier, VerifyContext, VerifyResult } from "./verify/Verifier";
+export type {
+  Verifier,
+  VerifyContext,
+  VerifyResult,
+  SecretValue,
+} from "./verify/Verifier";
+export type {
+  RuntimeOptions,
+  IntakeRequest,
+  IntakeResponse,
+  DispatchResult,
+  SweepResult,
+} from "./runtime/handlers";
 export type {
   IntakeStackConfig,
   EventDispatch,
-  DeployOptions,
-  DeployPlan,
-  DeployResult,
+  IntakeManifest,
+  IntakeManifestEndpoint,
+  IntakeManifestSchedule,
   DevOptions,
   LocalIntakeServer,
   ReplayOptions,
